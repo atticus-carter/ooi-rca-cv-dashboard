@@ -5,17 +5,16 @@ import duckdb
 from google.cloud import storage
 import streamlit as st  # Import Streamlit
 from scripts.model_generation import generate_predictions, model_urls # Replace with your path
+import json
 
 # --- Camera Names ---
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
 
 # --- Configuration (Adjust these) ---
 bucket_name = "ooi-rca-cv-data"  # Your GCS bucket name
+#camera_id = "PC01A_CAMDSC102"  # The ID of the camera # Removed this
 year_month = "2025-01"  # The year and month of the data
 #local_image_dir = "path/to/your/local/camera1/2024-01/images/"  # Path to your local images folder  # Removed this
-
-# Connect to DuckDB (in-memory for this example)
-con = duckdb.connect(database=':memory:', read_only=False)
 
 # --- Main Streamlit App ---
 st.title("OOI RCA CV Dashboard")
@@ -23,6 +22,29 @@ st.title("OOI RCA CV Dashboard")
 # --- Ensure bucket name is saved in session state ---
 if "bucket_name" not in st.session_state:
   st.session_state.bucket_name = bucket_name
+
+try:
+    # --- Explicitly Load Credentials from Environment Variable ---
+    credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if not credentials_json:
+        raise EnvironmentError("GOOGLE_APPLICATION_CREDENTIALS environment variable not set.")
+
+    # --- Parse Credentials JSON ---
+    credentials_info = json.loads(credentials_json)
+
+    # --- Create Credentials Object ---
+    from google.oauth2 import service_account
+    credentials = service_account.Credentials.from_service_account_info(credentials_info)
+
+    # --- Create Storage Client with Explicit Credentials ---
+    client = storage.Client(credentials=credentials)
+
+    print("Successfully created GCS client with explicit credentials.")  # Debugging
+
+except Exception as e:
+    st.error(f"Error loading Google Cloud credentials: {e}")
+    st.stop()  # Stop the app if credentials cannot be loaded
+    client = None
 
 # --- Camera Selection ---
 for camera_id in camera_names:  # Changed to iterate over camera_names list
@@ -56,8 +78,8 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
                     "class_name": prediction["class_name"],
                     "bbox_x": prediction["bbox"][0],
                     "bbox_y": prediction["bbox"][1],
-                    "bbox_width": prediction["bbox"][2],
-                    "bbox_height": prediction["bbox"][3],
+                    "bbox_width": prediction["bbox"][0],
+                    "bbox_height": prediction["bbox"][1],
                     "confidence": prediction["confidence"],
                 })
 
@@ -68,7 +90,6 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
         parquet_gcs_path = f"gs://{bucket_name}/{camera_id}/{year_month}/predictions.parquet"
 
         # 6. Upload images to GCS
-        client = storage.Client()
         bucket = client.bucket(bucket_name)
 
         for image_file in image_files:
