@@ -12,7 +12,7 @@ import re
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
 
 # --- Configuration (Adjust these) ---
-bucket_name = "ooi-rca-cv-data-yourname"  # Your GCS bucket name
+bucket_name = "ooi-rca-cv-data"  # Your GCS bucket name
 #camera_id = "PC01A_CAMDSC102"  # The ID of the camera # Removed this
 year_month = "2021-08"  # The year and month of the data
 
