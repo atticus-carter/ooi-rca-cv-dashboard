@@ -2,12 +2,9 @@ import os
 import glob
 import pandas as pd
 import duckdb
-from google.cloud import storage
 import streamlit as st  # Import Streamlit
 from scripts.model_generation import generate_predictions, model_urls # Replace with your path
-import json
 import re
-from google.oauth2 import service_account
 
 # --- Camera Names ---
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
@@ -32,42 +29,32 @@ st.title("OOI RCA CV Dashboard")
 
 # --- Ensure bucket name is saved in session state ---
 if "bucket_name" not in st.session_state:
-  st.session_state.bucket_name = bucket_name
+    st.session_state.bucket_name = bucket_name
 
-# --- Connect to DuckDB (in-memory for this example)
-con = duckdb.connect(database=':memory:', read_only=False)
-
+# --- Create Connection Object ---
 try:
-    # --- Explicitly Load Credentials from Environment Variable ---
-    cred_json = st.secrets["connections.gcs"]
-
-    # --- Create Credentials Object ---
-    credentials = service_account.Credentials.from_service_account_info(cred_json)
-
-    # --- Create Storage Client with Explicit Credentials ---
-    client = storage.Client(credentials=credentials)
-
-    print("Successfully created GCS client with explicit credentials.")  # Debugging
-
+    from st_files_connection import FilesConnection
+    conn = st.connection('gcs', type=FilesConnection)
+    print("Successfully created GCS connection.")
 except Exception as e:
-    st.error(f"Error loading Google Cloud credentials: {e}")
-    st.stop()  # Stop the app if credentials cannot be loaded
-    client = None
+    st.error(f"Error creating GCS connection: {e}")
+    st.stop()
+
+# Connect to DuckDB (in-memory for this example)
+con = duckdb.connect(database=':memory:', read_only=False)
 
 # --- Camera Selection ---
 for camera_id in camera_names:  # Changed to iterate over camera_names list
 
-    # --- Set local directory
-    local_image_dir = f"{camera_id}_data_{year_month}"  # Use data_YYYY-MM format
-
     # --- Define data GCS path
     data_gcs_path = f"gs://{bucket_name}/{camera_id}/data_{year_month}"
 
-    # --- check if gcs has data for camera ---
+    # --- Check if data exists in gcs ---
     try:
-        blobs = client.list_blobs(bucket_name, prefix=f"{camera_id}/data_{year_month}/")
-        has_data = any(blobs)
-    except:
+        blobs = conn.ls(f"{bucket_name}/{camera_id}/data_{year_month}/")  # Use conn.ls for listing
+        has_data = len(blobs) > 0  # Check if the directory has files
+    except Exception as e:
+        st.error(f"Error accessing GCS: {e}")
         has_data = False
 
     # --- Check if data exists in gcs ---
@@ -82,9 +69,31 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
             if not os.path.exists(local_image_dir):
                 os.makedirs(local_image_dir)
             # 1. List image files
-            image_files = glob.glob(os.path.join(local_image_dir, "*.jpg")) # Adjust for .png, etc.
+            #image_files = glob.glob(os.path.join(local_image_dir, "*.jpg")) # Adjust for .png, etc.
+
+            #Check what's in GCS before generating local file
+            try:
+                gcs_files = conn.ls(f"{bucket_name}/{camera_id}/data_{year_month}/")
+                image_files = [f for f in gcs_files if f.endswith(".jpg")]
+                if not image_files:
+                    st.warning(f"No images found in GCS for camera {camera_id}.")
+                    continue
+            except Exception as e:
+                st.error(f"Error listing GCS files: {e}")
+                continue
+
+            #Download images from GCS and place them in the directory
+            for image_file in image_files:
+                try:
+                    local_file = os.path.join(local_image_dir, image_file.split("/")[-1])
+                    conn.get(image_file, output_format="path", filename=local_file)
+                    print(f"File was succesfully downloaded to {local_file}")
+                except Exception as e:
+                    st.error(f"Failed to download {image_file} from GCS: {e}")
+
+            image_files = glob.glob(os.path.join(local_image_dir, "*.jpg"))  # Now read local directory for image
             if not image_files:
-                st.warning(f"No images found in local directory: {local_image_dir}.  Please verify that image directory was correctly loaded in")
+                st.warning(f"No images found in local directory: {local_image_dir}. Please verify that image directory was correctly loaded in")
                 continue  # Skip to the next camera
 
             # 2. Create a list to hold the data
@@ -109,8 +118,8 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
                         "class_name": prediction["class_name"],
                         "bbox_x": prediction["bbox"][0],
                         "bbox_y": prediction["bbox"][1],
-                        "bbox_width": prediction["bbox"][0],
-                        "bbox_height": prediction["bbox"][1],
+                        "bbox_width": prediction["bbox"][2],
+                        "bbox_height": prediction["bbox"][3],
                         "confidence": prediction["confidence"],
                     })
 
@@ -119,23 +128,22 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
                 df = pd.DataFrame(data)
 
                 # 5. Define the GCS path for the Parquet file
-                parquet_gcs_path = f"gs://{bucket_name}/{camera_id}/data_{year_month}/predictions.parquet"
+                parquet_gcs_path = f"{data_gcs_path}/predictions.parquet"
 
-                # 6. Upload images to GCS
-                bucket = client.bucket(bucket_name)
-                for image_file in image_files:
-                    image_name = os.path.basename(image_file)
-                    blob = bucket.blob(f"{camera_id}/data_{year_month}/{image_name}")
-                    blob.upload_from_filename(image_file)
-                    print(f"Uploaded {image_file} to gs://{bucket_name}/{camera_id}/data_{year_month}/{image_name}")
+                # 6. Save Parquet directly to GCS
+                try:
+                    #If writing out to GCS does not work, perhaps create a file and then copy. This ensures that the file exists
+                    df.to_parquet(parquet_file_path, engine='fastparquet')
+                    conn.upload(parquet_file_path, parquet_gcs_path)
+                    os.remove(parquet_file_path)
 
-                # 7. Save to Parquet directly to GCS
-                df.to_parquet(parquet_gcs_path, engine='fastparquet') # Important:  Install fastparquet!
-                print(f"Parquet file saved to {parquet_gcs_path}")
+                except Exception as e:
+                    print(f"Failed to upload parquet to gcs, however, the code now saves it locally. Error: {e}")
 
-                # 8. Save Parquet to local directory for streamlit connection
-                df.to_parquet(parquet_file_path, engine='fastparquet') # Important:  Install fastparquet!
-                print(f"Parquet file saved to {parquet_file_path}")
+                    print(f"Parquet file saved to {parquet_gcs_path}")
+                # 7. Save Parquet to local directory for streamlit connection
+                #df.to_parquet(parquet_file_path, engine='fastparquet') # Important:  Install fastparquet!
+                #print(f"Parquet file saved to {parquet_file_path}")
             else:
                 st.warning(f"No predictions generated for camera {camera_id}. Skipping")
                 continue # Skip to the next camera
