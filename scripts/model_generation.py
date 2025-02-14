@@ -25,7 +25,8 @@ def load_model(model_name):
             model = YOLO(url)  # Load local model
         else:
             torch.hub.download_url_to_file(url, 'temp_model.pt')  # Download to temp file
-            model = YOLO('temp_model.pt')  # Load from temp file
+            device = torch.device('cpu')
+            model = YOLO('temp_model.pt', device=device)  # Load from temp file
     except Exception as e:
         raise Exception(f"Error loading model '{model_name}': {e}")
 
