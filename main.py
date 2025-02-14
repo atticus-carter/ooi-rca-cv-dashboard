@@ -10,8 +10,7 @@ from scripts.model_generation import generate_predictions, model_urls # Replace 
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
 
 # --- Configuration (Adjust these) ---
-bucket_name = "ooi-rca-cv-data-yourname"  # Your GCS bucket name
-#camera_id = "PC01A_CAMDSC102"  # The ID of the camera # Removed this
+bucket_name = "ooi-rca-cv-data"  # Your GCS bucket name
 year_month = "2025-01"  # The year and month of the data
 #local_image_dir = "path/to/your/local/camera1/2024-01/images/"  # Path to your local images folder  # Removed this
 
