@@ -10,4 +10,4 @@ ultralytics
 streamlit
 opencv-python
 st-files-connection
-gcsfs==
+gcsfs
