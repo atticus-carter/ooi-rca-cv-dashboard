@@ -1,34 +1,16 @@
 import streamlit as st
 import duckdb
 import pandas as pd
-from google.cloud import storage  # For accessing GCS images
-from PIL import Image
-import io
-import cv2  # OpenCV
-import numpy as np
-import hashlib
 import re
+import os
+from scripts.model_generation import model_urls # Replace with your path
+import json
 from google.oauth2 import service_account
+import io
+import cv2 # opencv
 
 # --- Camera Names ---
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
-
-# Function to generate color dynamically
-def generate_color(class_name):
-    """Generates a unique BGR color for a given class name."""
-    # Use hashlib to generate a unique (but deterministic) number for each class
-    hash_object = hashlib.md5(class_name.encode())
-    hex_digest = hash_object.hexdigest()
-
-    # Take the first 6 characters of the hex digest and convert them to an integer
-    color_int = int(hex_digest[:6], 16)
-
-    # Extract BGR components
-    blue = (color_int & 0xFF)
-    green = ((color_int >> 8) & 0xFF)
-    red = ((color_int >> 16) & 0xFF)
-
-    return (blue, green, red)  # BGR format
 
 # --- Dataview Page ---
 if 'camera' not in st.session_state:
@@ -36,150 +18,53 @@ if 'camera' not in st.session_state:
 else:
     st.title(f"Dataview - {st.session_state.camera}")
 
-    # --- Load Variables from Session State ---
+    # --- Load variables from Session State ---
     bucket_name = st.session_state.get("bucket_name")  # Ensure bucket_name is passed
     camera_id = st.session_state.camera
     selected_model = st.session_state.get("selected_model", "SHR_DSCAM")
     year_month = "2021-08"  # The year and month of the data
+    #try:
+        # Load credentials from secrets to cloud storage
+    gcs = st.secrets["connections.gcs"]
 
-    st.write(f"Using model: {selected_model}")
-
-    parquet_file_path = f"{camera_id}_data_{year_month}/predictions.parquet"
-
-    # Check if data has been generated in main.py and exists in that file
-    if not os.path.exists(parquet_file_path):
-        st.write("Please run the main page before trying to access this dataview, or ensure there is data for this camera")
-        con.close()
-        st.stop()
-    else:
-        try:
-        # Connect to DuckDB (in-memory for this example)
-            con = duckdb.connect(database=':memory:', read_only=False)
-
-            # Install and configure the httpfs extension for GCS access
-            con.sql("INSTALL httpfs;")
-            con.sql("LOAD httpfs;")
-            con.sql(f"SET s3_endpoint='storage.googleapis.com';")
-            con.sql(f"SET s3_region='auto';")
-            #You may need these lines depending on your duckdb version and gcloud credentials setup
-            #con.sql("SET s3_access_key_id='';")
-            #con.sql("SET s3_secret_access_key='';")
-            #con.sql("SET s3_session_token='';")
-
-            # Load credentials from secrets to cloud storage
-            cred_json = st.secrets["connections.gcs"]
-            # Make your credential in json, its okay to expose everything as nothing is loaded.
-            #except:
-            #st.write("Missing credential. Make sure you configure your secrets manager.")
-            #st.stop()
+        # Make your credential in json, its okay to expose everything as nothing is loaded.
+       # except:
+       # st.write("Missing credential. Make sure you configure your secrets manager.")
+       # st.stop()
         # Authenticate into google
-            credentials = service_account.Credentials.from_service_account_info(cred_json)
+    con = duckdb.connect(database=':memory:', read_only=False)
+    csv_filepath = f"{camera_id}_data_{year_month}/predictions.parquet"
 
-            # This works with the new streamlit
-            st.header("Testing Google Connect")
-            client = storage.Client(credentials=credentials)
+    """
+    if  not os.path.exists(csv_filepath):
+        st.write("Please ensure that this session has data for the GCS")
+        st.write("You can configure more data from the homepage of this session")
+        st.stop()
+        #st.csv will not work on links unless it is public
+    else:"""
+    st.write("Configuring google connect... Please wait!")
+    try:
+        df = pd.read_parquet(csv_filepath)
 
-            bucket = client.get_bucket(st.session_state["bucket_name"])
+        st.header("Test Pandas: Successfully connected to GCS file")
+        st.subheader("Here is the data in pandas")
 
-            # Load the dataframe from the parquet file
-            query = f"SELECT * FROM '{parquet_file_path}'"
-            try:
-                df = con.execute(query).fetchdf()
-                if df.empty:
-                    st.warning("No data found for the selected camera and time period.")
-                else:
-                    # Convert timestamp to datetime objects if it's not already
-                    df['timestamp'] = pd.to_datetime(df['timestamp'])
-
-                    # Sort by timestamp
-                    df = df.sort_values(by='timestamp')
-
-                    # --- Time Selection with Slider ---
-                    min_ts = df['timestamp'].min()
-                    max_ts = df['timestamp'].max()
-
-                    time_selection = st.slider(
-                        "Select Timestamp:",
-                        min_value=min_ts,
-                        max_value=max_ts,
-                        value=min_ts  # Initial Value
-                    )
-
-                    # Filter the DataFrame to get the closest matching record
-                    closest_record = df.iloc[(df['timestamp'] - time_selection).abs().argsort()[:1]]
-
-                    # Load the closest image and get its path
-                    image_gcs_path = closest_record['image_path'].iloc[0]
-                    st.write(f"Using image: {image_gcs_path}")
-
-                    # Connect to the GCS
-                    client = storage.Client()
-                    bucket = client.bucket(st.session_state.bucket_name)
-
-                    # Extract the image from the GCS
-                    try:
-                        blob = bucket.blob(image_gcs_path.replace(f"gs://{st.session_state.bucket_name}/", ""))
-                        image_bytes = blob.download_as_bytes()
-                        image = Image.open(io.BytesIO(image_bytes))
-                        img_width, img_height = image.size
-                        image_np = np.array(image)  # Convert PIL Image to NumPy array
-                        image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR) # Convert RGB to BGR
-
-                    except Exception as e:
-                        st.error(f"Error loading image: {e}")
-                        image_cv = None
-
-
-                    # Draw Bounding Boxes
-                    if image_cv is not None:
-                        st.write("Displaying bounding boxes...")
-                        # Get predictions for the selected image
-                        predictions = closest_record.to_dict('records')
-
-                        # --- Draw Bounding Boxes ---
-                        for prediction in predictions:
-                            # Extract bounding box coordinates
-                            x_center = prediction['bbox_x']
-                            y_center = prediction['bbox_y']
-                            box_width = prediction['bbox_width']
-                            box_height = prediction['bbox_height']
-                            confidence = prediction['confidence']
-                            class_name = prediction['class_name']
-
-                            # Convert normalized coordinates to pixel coordinates
-                            x1 = int((x_center - box_width / 2) * img_width)
-                            y1 = int((y_center - box_height / 2) * img_height)
-                            x2 = int((x_center + box_width / 2) * img_width)
-                            y2 = int((y_center + box_height / 2) * img_height)
-
-
-                            # Dynamically generate color for the class
-                            color = generate_color(class_name)
-
-                            # Draw the bounding box and label
-                            cv2.rectangle(image_cv, (x1, y1), (x2, y2), color, 2)
-                            label = f"{class_name}: {confidence:.2f}"
-                            cv2.putText(image_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-
-                        # Convert back to RGB for Streamlit
-                        image_rgb = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
-                        st.image(image_rgb, caption=f"Image with Bounding Boxes from {time_selection}")
-
-
-                    # --- Download Predictions ---
-                    if st.button("Download Predictions as CSV"):
-                        # Convert the closest_record (which is already a DataFrame) to CSV
-                        csv_data = closest_record.to_csv(index=False)
-
-                        st.download_button(
-                            label="Download",
-                            data=csv_data,
-                            file_name="predictions.csv",
-                            mime="text/csv",
-                        )
-
-            except Exception as e:
-                st.error(f"Error querying DuckDB: {e}")
-
-            con.close()
+        #if this is true,
+        st.dataframe(df)
+    except:
+        st.write("Please test the code first! If this does not work, then ensure that you have data for the camera folder")
+        st.stop()
+    #with st.expander("Click to read more in depth about this data"):
+        #st.write("This will create a better visualization for you")
+    #def load_lottieurl(url: str):
+    #try:
+        #r = requests.get(url)
+        #if r.status_code != 200:
+            #return None
+        #return r.json()
+    except:
+        st.write("Ensure you have loaded everything")
+        st.stop()
+        # load local css file
+    con.close()
+        # use local css file"""
