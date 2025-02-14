@@ -41,6 +41,7 @@ def generate_predictions(image_path, model_name="SHR_DSCAM"): # Default model
         return []
 
     try:
+        print("Running YOLO, just saying this to ensure this code actually runs")
         results = model(image_path)  # Run inference
 
         predictions = []
