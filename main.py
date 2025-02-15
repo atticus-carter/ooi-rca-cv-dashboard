@@ -5,12 +5,13 @@ import duckdb
 import streamlit as st  # Import Streamlit
 from scripts.model_generation import generate_predictions, model_urls # Replace with your path
 import re
+import boto3  # Import boto3
 
 # --- Camera Names ---
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
 
 # --- Configuration (Adjust these) ---
-bucket_name = "ooi-rca-cv-data"  # Your GCS bucket name
+bucket_name = "ooi-rca-cv-data-aws"  # Your S3 bucket name
 year_month = "2021-08"  # The year and month of the data
 
 # --- Function to extract timestamp from filename ---
@@ -31,13 +32,17 @@ st.title("OOI RCA CV Dashboard")
 if "bucket_name" not in st.session_state:
     st.session_state.bucket_name = bucket_name
 
-# --- Create Connection Object ---
+# --- Create S3 Client ---
 try:
-    from st_files_connection import FilesConnection
-    conn = st.connection('gcs', type=FilesConnection)
-    print("Successfully created GCS connection.")
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=st.secrets["connections.s3"]["aws_access_key_id"],
+        aws_secret_access_key=st.secrets["connections.s3"]["aws_secret_access_key"],
+        region_name=st.secrets["connections.s3"]["region_name"],
+    )
+    print("Successfully created S3 client.")
 except Exception as e:
-    st.error(f"Error creating GCS connection: {e}")
+    st.error(f"Error creating S3 client: {e}")
     st.stop()
 
 # Connect to DuckDB (in-memory for this example)
@@ -46,18 +51,21 @@ con = duckdb.connect(database=':memory:', read_only=False)
 # --- Camera Selection ---
 for camera_id in camera_names:  # Changed to iterate over camera_names list
 
-    # --- Define data GCS path
-    data_gcs_path = f"gs://{bucket_name}/{camera_id}/data_{year_month}"
+    # --- Set local directory
+    local_image_dir = f"{camera_id}_data_{year_month}"  # Use data_YYYY-MM format
 
-    # --- Check if data exists in gcs ---
+    # --- Define data S3 path
+    data_s3_path = f"s3://{bucket_name}/{camera_id}/data_{year_month}"
+
+    # --- check if s3 has data for camera ---
     try:
-        blobs = conn.ls(f"{bucket_name}/{camera_id}/data_{year_month}/")  # Use conn.ls for listing
-        has_data = len(blobs) > 0  # Check if the directory has files
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=f"{camera_id}/data_{year_month}/")
+        has_data = "Contents" in response
     except Exception as e:
-        st.error(f"Error accessing GCS: {e}")
+        st.error(f"Error accessing S3 bucket: {e}")
         has_data = False
 
-    # --- Check if data exists in gcs ---
+    # --- Check if data exists in s3 ---
     if has_data:
         # --- Set local directory
         local_image_dir = f"{camera_id}_data_{year_month}"  # Use data_YYYY-MM format
@@ -69,31 +77,9 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
             if not os.path.exists(local_image_dir):
                 os.makedirs(local_image_dir)
             # 1. List image files
-            #image_files = glob.glob(os.path.join(local_image_dir, "*.jpg")) # Adjust for .png, etc.
-
-            #Check what's in GCS before generating local file
-            try:
-                gcs_files = conn.ls(f"{bucket_name}/{camera_id}/data_{year_month}/")
-                image_files = [f for f in gcs_files if f.endswith(".jpg")]
-                if not image_files:
-                    st.warning(f"No images found in GCS for camera {camera_id}.")
-                    continue
-            except Exception as e:
-                st.error(f"Error listing GCS files: {e}")
-                continue
-
-            #Download images from GCS and place them in the directory
-            for image_file in image_files:
-                try:
-                    local_file = os.path.join(local_image_dir, image_file.split("/")[-1])
-                    conn.get(image_file, output_format="path", filename=local_file)
-                    print(f"File was succesfully downloaded to {local_file}")
-                except Exception as e:
-                    st.error(f"Failed to download {image_file} from GCS: {e}")
-
-            image_files = glob.glob(os.path.join(local_image_dir, "*.jpg"))  # Now read local directory for image
+            image_files = glob.glob(os.path.join(local_image_dir, "*.jpg")) # Adjust for .png, etc.
             if not image_files:
-                st.warning(f"No images found in local directory: {local_image_dir}. Please verify that image directory was correctly loaded in")
+                st.warning(f"No images found in local directory: {local_image_dir}.  Please verify that image directory was correctly loaded in")
                 continue  # Skip to the next camera
 
             # 2. Create a list to hold the data
@@ -106,14 +92,14 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
                 if timestamp is None:
                     print(f"Warning: Could not extract timestamp from filename {image_name}. Skipping.")
                     continue
-                image_gcs_path = f"{data_gcs_path}/{image_name}"
+                image_s3_path = f"{data_s3_path}/{image_name}"
                 predictions = generate_predictions(image_file, "SHR_DSCAM") # Replace with your desired model
 
                 for prediction in predictions:
                     data.append({
                         "camera_id": camera_id,
                         "timestamp": timestamp,
-                        "image_path": image_gcs_path,
+                        "image_path": image_s3_path,
                         "class_id": prediction["class_id"],
                         "class_name": prediction["class_name"],
                         "bbox_x": prediction["bbox"][0],
@@ -127,23 +113,23 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
             if data: # Check to ensure data is not empty, skip to next if so
                 df = pd.DataFrame(data)
 
-                # 5. Define the GCS path for the Parquet file
-                parquet_gcs_path = f"{data_gcs_path}/predictions.parquet"
+                # 5. Define the S3 path for the Parquet file
+                parquet_s3_path = f"{data_s3_path}/predictions.parquet"
 
-                # 6. Save Parquet directly to GCS
-                try:
-                    #If writing out to GCS does not work, perhaps create a file and then copy. This ensures that the file exists
-                    df.to_parquet(parquet_file_path, engine='fastparquet')
-                    conn.upload(parquet_file_path, parquet_gcs_path)
-                    os.remove(parquet_file_path)
+                # 6. Upload images to S3
+                s3_client = boto3.client("s3")
+                for image_file in image_files:
+                    image_name = os.path.basename(image_file)
+                    s3_client.upload_file(image_file, bucket_name, f"{camera_id}/data_{year_month}/{image_name}")
+                    print(f"Uploaded {image_file} to s3://{bucket_name}/{camera_id}/data_{year_month}/{image_name}")
 
-                except Exception as e:
-                    print(f"Failed to upload parquet to gcs, however, the code now saves it locally. Error: {e}")
+                # 7. Save to Parquet directly to S3
+                df.to_parquet(parquet_s3_path, engine='fastparquet') # Important:  Install fastparquet!
+                print(f"Parquet file saved to {parquet_s3_path}")
 
-                    print(f"Parquet file saved to {parquet_gcs_path}")
-                # 7. Save Parquet to local directory for streamlit connection
-                #df.to_parquet(parquet_file_path, engine='fastparquet') # Important:  Install fastparquet!
-                #print(f"Parquet file saved to {parquet_file_path}")
+                # 8. Save Parquet to local directory for streamlit connection
+                df.to_parquet(parquet_file_path, engine='fastparquet') # Important:  Install fastparquet!
+                print(f"Parquet file saved to {parquet_file_path}")
             else:
                 st.warning(f"No predictions generated for camera {camera_id}. Skipping")
                 continue # Skip to the next camera
@@ -180,7 +166,7 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
         except Exception as e:
             st.write(f"Failed to fetch predictions: {e}")
     else:
-        st.warning(f"No data found in GCS for camera: {camera_id}")
+        st.warning(f"No data found in S3 for camera: {camera_id}")
 
 # --- Dataview Button ---
 camera_option = st.selectbox("Select Camera for Detailed View", [cam for cam in camera_names if os.path.exists(f"{cam}_data_{year_month}/predictions.parquet")])  # Use camera_names list
@@ -190,5 +176,3 @@ if st.button("Go to Dataview"):
     st.session_state.selected_model = selected_model
     st.session_state.bucket_name = bucket_name # Passing the bucket name
     st.switch_page("pages/dataview.py") # You would need to create dataview.py in a pages directory
-
-con.close()
