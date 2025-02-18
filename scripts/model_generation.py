@@ -74,9 +74,10 @@ def generate_predictions(image_path, model_name="SHR_DSCAM", conf_thres=0.25, io
         predictions = []
         for result in results:
             boxes = result.boxes
+            names = result.names  # Get class names from the result
             for box in boxes:
                 class_id = int(box.cls[0])
-                class_name = model.names[class_id]
+                class_name = names[class_id]  # Use the class name from the model
                 confidence = float(box.conf[0])
                 bbox = box.xywhn[0].tolist() # Normalized xywh (center x, center y, width, height)
                 predictions.append({
