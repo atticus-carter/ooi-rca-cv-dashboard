@@ -6,7 +6,6 @@ import streamlit as st
 from scripts.model_generation import generate_predictions, model_urls
 import re
 import boto3
-import torch
 import time  # Import the time module
 import yaml  # Import the YAML module
 import subprocess  # Import subprocess

@@ -3,9 +3,6 @@ boto3
 pandas
 pyarrow
 fastparquet
-torch
-torchvision
-torchaudio
 ultralytics
 streamlit
 opencv-python

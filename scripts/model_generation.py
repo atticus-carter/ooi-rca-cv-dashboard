@@ -1,6 +1,9 @@
-import torch
 import os
 from ultralytics import YOLO
+import logging
+
+# --- Configure Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Model Management ---
 model_urls = {
@@ -17,17 +20,22 @@ def load_model(model_name):
 
     url = model_urls.get(model_name)
     if not url:
-        raise ValueError(f"Model '{model_name}' not found.  Check model_urls dictionary.")
+        raise ValueError(f"Model '{model_name}' not found. Check model_urls dictionary.")
 
     try:
         # Check if the model is a local file or URL
         if os.path.exists(url):
             model = YOLO(url)  # Load local model
+            logging.info(f"Model '{model_name}' loaded from local file: {url}")
         else:
-            torch.hub.download_url_to_file(url, 'temp_model.pt')  # Download to temp file
-            device = torch.device('cpu')
-            model = YOLO('temp_model.pt', device=device)  # Load from temp file
+            # Download the model to a temporary file
+            import urllib.request
+            temp_model_path = "temp_model.pt"
+            urllib.request.urlretrieve(url, temp_model_path)
+            model = YOLO(temp_model_path)  # Load from temp file
+            logging.info(f"Model '{model_name}' loaded from URL: {url}")
     except Exception as e:
+        logging.error(f"Error loading model '{model_name}': {e}", exc_info=True)
         raise Exception(f"Error loading model '{model_name}': {e}")
 
     models[model_name] = model
@@ -38,11 +46,12 @@ def generate_predictions(image_path, model_name="SHR_DSCAM"): # Default model
     try:
         model = load_model(model_name)
     except Exception as e:
+        logging.error(f"Error loading model: {e}", exc_info=True)
         print(f"Error loading model: {e}")
         return []
 
     try:
-        print("Running YOLO, just saying this to ensure this code actually runs")
+        logging.info(f"Running YOLO inference on image: {image_path}")
         results = model(image_path)  # Run inference
 
         predictions = []
@@ -59,7 +68,9 @@ def generate_predictions(image_path, model_name="SHR_DSCAM"): # Default model
                     "bbox": bbox, # normalized
                     "confidence": confidence,
                 })
+        logging.info(f"Generated {len(predictions)} predictions for image: {image_path}")
         return predictions
     except Exception as e:
+        logging.error(f"Error during inference on image {image_path}: {e}", exc_info=True)
         print(f"Error during inference: {e}")
         return []
