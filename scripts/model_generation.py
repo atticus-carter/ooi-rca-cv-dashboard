@@ -1,13 +1,14 @@
 import os
 from ultralytics import YOLO
 import logging
+import urllib.request  # Import urllib
 
 # --- Configure Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Model Management ---
 model_urls = {
-    "SHR_DSCAM": "https://huggingface.co/atticus-carter/SHR_DSCAM/resolve/main/best.pt",
+    "SHR_DSCAM": "https://huggingface.co/atticus-carter/SHR_DSCAM/raw/main/best.pt",
     # Add other models here with their URLs
 }
 
@@ -24,13 +25,12 @@ def load_model(model_name):
 
     try:
         # Check if the model is a local file or URL
-        if os.path.exists(url):
-            model = YOLO(url)  # Load local model
-            logging.info(f"Model '{model_name}' loaded from local file: {url}")
+        if os.path.exists("best.pt"):
+            model = YOLO("best.pt")  # Load local model
+            logging.info(f"Model '{model_name}' loaded from local file: best.pt")
         else:
             # Download the model to a temporary file
-            import urllib.request
-            temp_model_path = "temp_model.pt"
+            temp_model_path = "best.pt"
             urllib.request.urlretrieve(url, temp_model_path)
             model = YOLO(temp_model_path)  # Load from temp file
             logging.info(f"Model '{model_name}' loaded from URL: {url}")
