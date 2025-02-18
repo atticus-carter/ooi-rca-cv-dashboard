@@ -92,9 +92,13 @@ def display_latest_image_with_predictions(camera_id):
 
     # Overlay predictions on the image
     for prediction in predictions:
+        if len(prediction["bbox"]) < 4:
+            logging.warning(f"Skipping prediction due to insufficient bbox elements: {prediction}")
+            continue
+
         class_name = prediction["class_name"]
         confidence = prediction["confidence"]
-        bbox_x, bbox_y, bbox_width, bbox_height = prediction["bbox_x"], prediction["bbox_y"], prediction["bbox_width"], prediction["bbox_height"]
+        bbox_x, bbox_y, bbox_width, bbox_height = prediction["bbox"][0], prediction["bbox"][1], prediction["bbox"][2], prediction["bbox"][3]
 
         x1 = int((bbox_x - bbox_width / 2) * img_width)
         y1 = int((bbox_y - bbox_height / 2) * img_height)
