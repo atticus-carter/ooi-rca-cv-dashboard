@@ -13,6 +13,9 @@ import subprocess  # Import subprocess
 
 # --- Load Configuration ---
 try:
+    if os.stat("config.yaml").st_size == 0:
+        st.error("Configuration file 'config.yaml' is empty.")
+        st.stop()
     with open("config.yaml", "r") as f:
         config = yaml.safe_load(f)
     if config is None:
