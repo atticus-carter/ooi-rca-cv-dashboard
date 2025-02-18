@@ -1,8 +1,6 @@
 import os
 import glob
 import pandas as pd
-import boto3
-import torch
 from ultralytics import YOLO
 from scripts.model_generation import generate_predictions  # Import your prediction function
 import re
@@ -26,32 +24,16 @@ def extract_timestamp_from_filename(filename):
 def batch_process_camera_data(camera_id, year_month, model_name, config):
     """
     Processes all images for a given camera and year/month, generates predictions,
-    and saves the predictions in Parquet format on S3, partitioned by date.
+    and saves the predictions in Parquet format locally, partitioned by date.
     """
-    bucket_name = config["bucket_name"]
-    data_s3_path = f"s3://{bucket_name}/{camera_id}/data_{year_month}"
-    local_image_dir = f"{camera_id}_data_{year_month}"
-    parquet_s3_prefix = f"{camera_id}/predictions/{year_month}"  # S3 prefix for partitioned Parquet files
-
-    # Create S3 client
-    try:
-        s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),  # Use environment variables
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
-            region_name=config["region_name"],
-        )
-        logging.info("Successfully created S3 client.")
-    except Exception as e:
-        logging.error(f"Error creating S3 client: {e}", exc_info=True)
-        print(f"Error creating S3 client: {e}")
-        return
+    image_dir = os.path.join("images", camera_id, year_month)
+    parquet_prefix = os.path.join("images", camera_id, "predictions")  # Local prefix for partitioned Parquet files
 
     # List image files in the local directory
-    image_files = glob.glob(os.path.join(local_image_dir, "*.jpg"))  # Adjust for other image formats
+    image_files = glob.glob(os.path.join(image_dir, "*.jpg"))  # Adjust for other image formats
     if not image_files:
-        logging.warning(f"No images found in local directory: {local_image_dir}")
-        print(f"No images found in local directory: {local_image_dir}")
+        logging.warning(f"No images found in local directory: {image_dir}")
+        print(f"No images found in local directory: {image_dir}")
         return
 
     # Process each image and generate predictions
@@ -76,7 +58,7 @@ def batch_process_camera_data(camera_id, year_month, model_name, config):
             data.append({
                 "camera_id": camera_id,
                 "timestamp": timestamp,
-                "image_path": f"{data_s3_path}/{image_name}",
+                "image_path": image_file,  # Store local image path
                 "class_id": prediction["class_id"],
                 "class_name": prediction["class_name"],
                 "bbox_x": prediction["bbox"][0],
@@ -91,17 +73,18 @@ def batch_process_camera_data(camera_id, year_month, model_name, config):
             # Partition the Parquet file by date
             date_partition = timestamp.strftime("%Y-%m-%d")
             parquet_file_name = f"{camera_id}_predictions_{timestamp.strftime('%Y%m%d')}.parquet"
-            parquet_s3_key = f"{parquet_s3_prefix}/date={date_partition}/{parquet_file_name}"
-            parquet_s3_path = f"s3://{bucket_name}/{parquet_s3_key}"
+            parquet_dir = os.path.join(parquet_prefix, f"date={date_partition}")
+            os.makedirs(parquet_dir, exist_ok=True)  # Ensure the directory exists
+            parquet_file_path = os.path.join(parquet_dir, parquet_file_name)
 
-            # Save the DataFrame to Parquet on S3
+            # Save the DataFrame to Parquet locally
             try:
-                df.to_parquet(parquet_s3_path, engine='fastparquet')
-                logging.info(f"Predictions saved to {parquet_s3_path}")
-                print(f"Predictions saved to {parquet_s3_path}")
+                df.to_parquet(parquet_file_path, engine='fastparquet')
+                logging.info(f"Predictions saved to {parquet_file_path}")
+                print(f"Predictions saved to {parquet_file_path}")
             except Exception as e:
-                logging.error(f"Error saving predictions to {parquet_s3_path}: {e}", exc_info=True)
-                print(f"Error saving predictions to {parquet_s3_path}: {e}")
+                logging.error(f"Error saving predictions to {parquet_file_path}: {e}", exc_info=True)
+                print(f"Error saving predictions to {parquet_file_path}: {e}")
         else:
             logging.warning(f"No predictions generated for {image_name}")
             print(f"No predictions generated for {image_name}")

@@ -5,7 +5,6 @@ import duckdb
 import streamlit as st
 from scripts.model_generation import generate_predictions, model_urls
 import re
-import boto3
 import time  # Import the time module
 import yaml  # Import the YAML module
 import subprocess  # Import subprocess
@@ -31,12 +30,10 @@ try:
         st.error("Configuration file 'config.yaml' contains invalid YAML.")
         st.stop()
 
-    bucket_name = config.get("bucket_name")
     year_month = config.get("year_month")
-    region_name = config.get("region_name")
 
-    if not bucket_name or not year_month or not region_name:
-        st.error("Missing 'bucket_name', 'year_month', or 'region_name' in 'config.yaml'.")
+    if not year_month:
+        st.error("Missing 'year_month' in 'config.yaml'.")
         st.stop()
 
 except FileNotFoundError:
@@ -66,57 +63,24 @@ def extract_timestamp_from_filename(filename):
 # --- Main Streamlit App ---
 st.title("OOI RCA CV Dashboard")
 
-# --- Ensure bucket name is saved in session state ---
-if "bucket_name" not in st.session_state:
-    st.session_state.bucket_name = bucket_name
-
-# --- Create S3 Client ---
-try:
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=st.secrets["connections.s3"]["aws_access_key_id"],
-        aws_secret_access_key=st.secrets["connections.s3"]["aws_secret_access_key"],
-        region_name=st.secrets["connections.s3"]["region_name"],
-    )
-    print("Successfully created S3 client.")
-except Exception as e:
-    st.error(f"Error creating S3 client: {e}. Check your AWS credentials in Streamlit secrets. Ensure they are correctly formatted.")
-    st.stop()
-
 # Connect to DuckDB (in-memory for this example)
 con = duckdb.connect(database=':memory:', read_only=False)
 
 # --- Camera Selection ---
 for camera_id in camera_names:
-    # --- Set local directory
-    local_image_dir = f"{camera_id}_data_{year_month}"
+    # --- Define image directory
+    image_dir = os.path.join("images", camera_id, year_month)
 
-    # --- Define data S3 path
-    data_s3_path = f"s3://{bucket_name}/{camera_id}/data_{year_month}"
-
-    # --- check if s3 has data for camera ---
-    try:
-        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=f"{camera_id}/data_{year_month}/")
-        has_data = "Contents" in response
-    except Exception as e:
-        st.error(f"Error accessing S3 bucket: {e}. Check bucket name and permissions. Ensure the bucket exists and your credentials have the necessary permissions.")
-        has_data = False
-
-    # --- Check if data exists in s3 ---
-    if has_data:
-        # --- Set local directory
-        local_image_dir = f"{camera_id}_data_{year_month}"
-
+    # --- Check if data exists in local directory ---
+    if os.path.exists(image_dir):
         # --- Check if the Parquet File has been created. If not create it ---
-        parquet_file_path = f"{local_image_dir}/predictions.parquet"
+        parquet_file_path = os.path.join(image_dir, "predictions.parquet")
 
         if not os.path.exists(parquet_file_path):
-            if not os.path.exists(local_image_dir):
-                os.makedirs(local_image_dir)
             # 1. List image files
-            image_files = glob.glob(os.path.join(local_image_dir, "*.jpg")) # Adjust for .png, etc.
+            image_files = glob.glob(os.path.join(image_dir, "*.jpg")) # Adjust for .png, etc.
             if not image_files:
-                st.warning(f"No images found in local directory: {local_image_dir}. Please verify that image directory was correctly loaded in")
+                st.warning(f"No images found in local directory: {image_dir}. Please verify that image directory was correctly loaded in")
                 continue  # Skip to the next camera
 
             # 2. Create a list to hold the data
@@ -133,7 +97,6 @@ for camera_id in camera_names:
                 if timestamp is None:
                     print(f"Warning: Could not extract timestamp from filename {image_name}. Skipping.")
                     continue
-                image_s3_path = f"{data_s3_path}/{image_name}"
                 try:
                     predictions = generate_predictions(image_file, "SHR_DSCAM")
                 except Exception as e:
@@ -144,7 +107,7 @@ for camera_id in camera_names:
                     data.append({
                         "camera_id": camera_id,
                         "timestamp": timestamp,
-                        "image_path": image_s3_path,
+                        "image_path": image_file,  # Store local image path
                         "class_id": prediction["class_id"],
                         "class_name": prediction["class_name"],
                         "bbox_x": prediction["bbox"][0],
@@ -161,44 +124,7 @@ for camera_id in camera_names:
             if data:
                 df = pd.DataFrame(data)
 
-                # 5. Define the S3 path for the Parquet file
-                parquet_s3_path = f"{data_s3_path}/predictions.parquet"
-
-                # 6. Upload images to S3 with retry
-                s3_client = boto3.client(
-                    "s3",
-                    aws_access_key_id=st.secrets["connections.s3"]["aws_access_key_id"],
-                    aws_secret_access_key=st.secrets["connections.s3"]["aws_secret_access_key"],
-                    region_name=st.secrets["connections.s3"]["region_name"],
-                )
-
-                def upload_with_retry(filename, bucket, key, retries=3, delay=2):
-                    for attempt in range(retries):
-                        try:
-                            s3_client.upload_file(filename, bucket, key)
-                            print(f"Uploaded {filename} to s3://{bucket}/{key}")
-                            return True
-                        except Exception as e:
-                            print(f"Error uploading {filename} (attempt {attempt + 1}/{retries}): {e}")
-                            if attempt < retries - 1:
-                                time.sleep(delay)  # Wait before retrying
-                            else:
-                                st.error(f"Failed to upload {filename} to S3 after multiple retries: {e}")
-                                return False
-
-                for image_file in image_files:
-                    image_name = os.path.basename(image_file)
-                    s3_key = f"{camera_id}/data_{year_month}/{image_name}"
-                    upload_with_retry(image_file, bucket_name, s3_key)
-
-                # 7. Save to Parquet directly to S3
-                try:
-                    df.to_parquet(parquet_s3_path, engine='fastparquet')
-                    print(f"Parquet file saved to {parquet_s3_path}")
-                except Exception as e:
-                    st.error(f"Error saving Parquet file to S3: {e}")
-
-                # 8. Save Parquet to local directory for streamlit connection
+                # 5. Save Parquet to local directory
                 try:
                     df.to_parquet(parquet_file_path, engine='fastparquet')
                     print(f"Parquet file saved to {parquet_file_path}")
@@ -240,16 +166,15 @@ for camera_id in camera_names:
         except Exception as e:
             st.write(f"Failed to fetch predictions: {e}")
     else:
-        st.warning(f"No data found in S3 for camera: {camera_id}")
+        st.warning(f"No data found in local directory: {image_dir}")
 
 # --- Dataview Button ---
-camera_option = st.selectbox("Select Camera for Detailed View", [cam for cam in camera_names if os.path.exists(f"{cam}_data_{year_month}/predictions.parquet")])  # Use camera_names list
+camera_option = st.selectbox("Select Camera for Detailed View", [cam for cam in camera_names if os.path.exists(os.path.join("images", cam, year_month, "predictions.parquet"))])  # Use camera_names list
 
 if st.button("Go to Dataview"):
     st.session_state.camera = camera_option
     st.session_state.selected_model = selected_model
-    st.session_state.bucket_name = bucket_name # Passing the bucket name
-    st.switch_page("pages/dataview.py") # You would need to create dataview.py in a pages directory
+    st.switch_page("pages/dataview.py")
 
 # --- Batch Processing Button ---
 if st.button("Run Batch Processing"):

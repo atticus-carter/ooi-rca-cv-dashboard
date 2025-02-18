@@ -6,7 +6,6 @@ import os
 from scripts.model_generation import model_urls, generate_predictions  # Import generate_predictions
 import io
 import cv2  # opencv
-import boto3
 from PIL import Image  # Import Pillow for image handling
 
 # --- Camera Names ---
@@ -19,25 +18,12 @@ else:
     st.title(f"Dataview - {st.session_state.camera}")
 
     # --- Load variables from Session State ---
-    bucket_name = st.session_state.get("bucket_name")
     camera_id = st.session_state.camera
     selected_model = st.session_state.get("selected_model", "SHR_DSCAM")
     year_month = "2021-08"
 
-    # --- AWS Authentication ---
     try:
-        s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=st.secrets["connections.s3"]["aws_access_key_id"],
-            aws_secret_access_key=st.secrets["connections.s3"]["aws_secret_access_key"],
-            region_name=st.secrets["connections.s3"]["region_name"],
-        )
-    except Exception as e:
-        st.error(f"Error during AWS authentication: {e}")
-        st.stop()
-
-    try:
-        parquet_file_path = f"{camera_id}_data_{year_month}/predictions.parquet"
+        parquet_file_path = os.path.join("images", camera_id, year_month, "predictions.parquet")
         df = pd.read_parquet(parquet_file_path)
     except Exception as e:
         st.error(f"Error loading Parquet file: {e}")
@@ -71,15 +57,8 @@ else:
         bbox_x, bbox_y, bbox_width, bbox_height = row['bbox_x'], row['bbox_y'], row['bbox_width'], row['bbox_height']
 
         try:
-            # Download the image from S3
-            image_name = os.path.basename(image_path)
-            local_image_path = os.path.join(f"{camera_id}_data_{year_month}", image_name)
-
-            if not os.path.exists(local_image_path):
-                s3_client.download_file(bucket_name, f"{camera_id}/data_{year_month}/{image_name}", local_image_path)
-
             # Open the image using PIL
-            img = Image.open(local_image_path)
+            img = Image.open(image_path)
             img_width, img_height = img.size
 
             # Calculate bounding box coordinates
@@ -89,7 +68,7 @@ else:
             y2 = int((bbox_y + bbox_height / 2) * img_height)
 
             # Draw bounding box and label on the image using OpenCV
-            img_cv = cv2.imread(local_image_path)
+            img_cv = cv2.imread(image_path)
             cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 255, 0), 2)
             label = f"{class_name} {confidence:.2f}"
             cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
