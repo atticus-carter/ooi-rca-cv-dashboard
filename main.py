@@ -3,7 +3,7 @@ import glob
 import pandas as pd
 import duckdb
 import streamlit as st
-from scripts.model_generation import generate_predictions, model_urls
+from scripts.model_generation import generate_predictions, model_urls, load_model
 import re
 import time  # Import the time module
 import yaml  # Import the YAML module
@@ -63,11 +63,25 @@ def extract_timestamp_from_filename(filename):
     else:
         return None
 
+# --- Color Palette for Bounding Boxes ---
+def get_color_for_class(class_name):
+    """Generates a unique color for each class name."""
+    # Use a hash function to generate a unique integer for each class name
+    hash_value = hash(class_name) % 360
+    # Map the hash value to a color in the HSL color space
+    hue = hash_value
+    saturation = 75  # You can adjust the saturation
+    lightness = 50  # You can adjust the lightness
+    # Convert HSL to BGR (OpenCV uses BGR)
+    hsv_color = np.uint8([[[hue, saturation, lightness]]])
+    bgr_color = cv2.cvtColor(hsv_color, cv2.COLOR_HSV2BGR)[0][0].tolist()
+    return bgr_color
+
 # --- Main Streamlit App ---
 st.title("OOI RCA CV Dashboard")
 
 # --- Find Most Recent Image and Display Predictions ---
-def display_latest_image_with_predictions(camera_id):
+def display_latest_image_with_predictions(camera_id, selected_model):
     image_dir = os.path.join("images", camera_id, year_month)
     if not os.path.exists(image_dir):
         st.warning(f"No data found in local directory: {image_dir}")
@@ -82,7 +96,7 @@ def display_latest_image_with_predictions(camera_id):
     most_recent_image = max(image_files, key=os.path.getmtime)
 
     # Generate predictions for the most recent image
-    predictions = generate_predictions(most_recent_image, "SHR_DSCAM")
+    predictions = generate_predictions(most_recent_image, selected_model)
 
     # Load the image using OpenCV
     img_cv = cv2.imread(most_recent_image)
@@ -105,9 +119,10 @@ def display_latest_image_with_predictions(camera_id):
         x2 = int((bbox_x + bbox_width / 2) * img_width)
         y2 = int((bbox_y + bbox_height / 2) * img_height)
 
-        cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        color = get_color_for_class(class_name)
+        cv2.rectangle(img_cv, (x1, y1), (x2, y2), color, 2)
         label = f"{class_name} {confidence:.2f}"
-        cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
     return img_cv
 
@@ -115,16 +130,32 @@ def display_latest_image_with_predictions(camera_id):
 cols = st.columns(2)
 for i in range(2):
     with cols[i]:
-        img = display_latest_image_with_predictions(camera_names[i])
+        st.subheader(camera_names[i])
+        available_models = list(model_urls.keys())
+        selected_model = st.selectbox(
+            f"Select Model for {camera_names[i]}",
+            options=available_models,
+            index=0,
+            key=f"model_{camera_names[i]}",
+        )
+        img = display_latest_image_with_predictions(camera_names[i], selected_model)
         if img is not None:
-            st.image(img, caption=f"Latest Image - {camera_names[i]}")
+            st.image(img, use_column_width=True)
 
 cols2 = st.columns(2)
 for i in range(2):
     with cols2[i]:
-        img = display_latest_image_with_predictions(camera_names[i+2])
+        st.subheader(camera_names[i+2])
+        available_models = list(model_urls.keys())
+        selected_model = st.selectbox(
+            f"Select Model for {camera_names[i+2]}",
+            options=available_models,
+            index=0,
+            key=f"model_{camera_names[i+2]}",
+        )
+        img = display_latest_image_with_predictions(camera_names[i+2],selected_model)
         if img is not None:
-            st.image(img, caption=f"Latest Image - {camera_names[i+2]}")
+            st.image(img, use_column_width=True)
 
 # --- Dataview Button ---
 camera_option = st.selectbox("Select Camera for Detailed View", camera_names)  # Use camera_names list
