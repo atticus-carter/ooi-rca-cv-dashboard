@@ -10,27 +10,44 @@ import torch
 import time  # Import the time module
 import yaml  # Import the YAML module
 import subprocess  # Import subprocess
+import logging
+
+# --- Configure Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Load Configuration ---
 try:
+    if not os.path.exists("config.yaml"):
+        st.error("Configuration file 'config.yaml' not found.")
+        st.stop()
+
     if os.stat("config.yaml").st_size == 0:
         st.error("Configuration file 'config.yaml' is empty.")
         st.stop()
+
     with open("config.yaml", "r") as f:
         config = yaml.safe_load(f)
+
     if config is None:
-        st.error("Configuration file 'config.yaml' is empty or contains invalid YAML.")
+        st.error("Configuration file 'config.yaml' contains invalid YAML.")
         st.stop()
-    bucket_name = config["bucket_name"]
-    year_month = config["year_month"]
+
+    bucket_name = config.get("bucket_name")
+    year_month = config.get("year_month")
+    region_name = config.get("region_name")
+
+    if not bucket_name or not year_month or not region_name:
+        st.error("Missing 'bucket_name', 'year_month', or 'region_name' in 'config.yaml'.")
+        st.stop()
+
 except FileNotFoundError:
-    st.error("Configuration file 'config.yaml' not found.  Please create one.")
+    st.error("Configuration file 'config.yaml' not found.")
     st.stop()
 except yaml.YAMLError as e:
     st.error(f"Error parsing 'config.yaml': {e}")
     st.stop()
-except KeyError as e:
-    st.error(f"Missing key in 'config.yaml': {e}")
+except Exception as e:
+    st.error(f"An unexpected error occurred while loading the configuration: {e}")
     st.stop()
 
 # --- Camera Names ---
@@ -64,7 +81,7 @@ try:
     )
     print("Successfully created S3 client.")
 except Exception as e:
-    st.error(f"Error creating S3 client: {e}. Check your AWS credentials in Streamlit secrets.")
+    st.error(f"Error creating S3 client: {e}. Check your AWS credentials in Streamlit secrets. Ensure they are correctly formatted.")
     st.stop()
 
 # Connect to DuckDB (in-memory for this example)
@@ -83,7 +100,7 @@ for camera_id in camera_names:
         response = s3.list_objects_v2(Bucket=bucket_name, Prefix=f"{camera_id}/data_{year_month}/")
         has_data = "Contents" in response
     except Exception as e:
-        st.error(f"Error accessing S3 bucket: {e}.  Check bucket name and permissions.")
+        st.error(f"Error accessing S3 bucket: {e}. Check bucket name and permissions. Ensure the bucket exists and your credentials have the necessary permissions.")
         has_data = False
 
     # --- Check if data exists in s3 ---
@@ -100,7 +117,7 @@ for camera_id in camera_names:
             # 1. List image files
             image_files = glob.glob(os.path.join(local_image_dir, "*.jpg")) # Adjust for .png, etc.
             if not image_files:
-                st.warning(f"No images found in local directory: {local_image_dir}.  Please verify that image directory was correctly loaded in")
+                st.warning(f"No images found in local directory: {local_image_dir}. Please verify that image directory was correctly loaded in")
                 continue  # Skip to the next camera
 
             # 2. Create a list to hold the data
