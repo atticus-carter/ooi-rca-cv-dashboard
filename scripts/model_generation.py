@@ -2,6 +2,7 @@ import os
 from ultralytics import YOLO
 import logging
 import urllib.request  # Import urllib
+import torch
 
 # --- Configure Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -26,6 +27,14 @@ def load_model(model_name):
     try:
         # Check if the model is a local file or URL
         if os.path.exists("best.pt"):
+            # Verify the file integrity
+            try:
+                torch.load("best.pt", map_location=torch.device('cpu'))
+            except Exception as e:
+                logging.error(f"Error loading local model file 'best.pt' with torch: {e}", exc_info=True)
+                os.remove("best.pt")  # Remove corrupted file
+                raise Exception(f"Error loading local model file 'best.pt' with torch: {e}")
+
             model = YOLO("best.pt")  # Load local model
             logging.info(f"Model '{model_name}' loaded from local file: best.pt")
         else:
@@ -40,6 +49,14 @@ def load_model(model_name):
             if not temp_model_path.endswith(".pt"):
                 os.remove(temp_model_path)
                 raise ValueError(f"Downloaded model file is not a valid PyTorch model (.pt): {temp_model_path}")
+
+            # Verify the file integrity
+            try:
+                torch.load(temp_model_path, map_location=torch.device('cpu'))
+            except Exception as e:
+                logging.error(f"Error loading downloaded model file '{temp_model_path}' with torch: {e}", exc_info=True)
+                os.remove(temp_model_path)  # Remove corrupted file
+                raise Exception(f"Error loading downloaded model file '{temp_model_path}' with torch: {e}")
 
             model = YOLO(temp_model_path)  # Load from temp file
             logging.info(f"Model '{model_name}' loaded from URL: {url}")
