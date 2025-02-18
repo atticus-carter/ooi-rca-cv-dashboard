@@ -14,5 +14,8 @@ camera_locations = {
 # Create a DataFrame from the camera locations
 camera_data = pd.DataFrame.from_dict(camera_locations, orient='index')
 
-# Display the map with camera names
-st.map(camera_data, tooltip="name")
+# Display the camera data
+st.dataframe(camera_data)
+
+# Display the map
+st.map(camera_data[["latitude", "longitude"]])
