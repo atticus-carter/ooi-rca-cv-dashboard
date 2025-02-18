@@ -9,6 +9,9 @@ import time  # Import the time module
 import yaml  # Import the YAML module
 import subprocess  # Import subprocess
 import logging
+import cv2
+from PIL import Image
+import numpy as np
 
 # --- Configure Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -63,117 +66,68 @@ def extract_timestamp_from_filename(filename):
 # --- Main Streamlit App ---
 st.title("OOI RCA CV Dashboard")
 
-# Connect to DuckDB (in-memory for this example)
-con = duckdb.connect(database=':memory:', read_only=False)
-
-# --- Camera Selection ---
-for camera_id in camera_names:
-    # --- Define image directory
+# --- Find Most Recent Image and Display Predictions ---
+def display_latest_image_with_predictions(camera_id):
     image_dir = os.path.join("images", camera_id, year_month)
-
-    # --- Check if data exists in local directory ---
-    if os.path.exists(image_dir):
-        # --- Check if the Parquet File has been created. If not create it ---
-        parquet_file_path = os.path.join(image_dir, "predictions.parquet")
-
-        if not os.path.exists(parquet_file_path):
-            # 1. List image files
-            image_files = glob.glob(os.path.join(image_dir, "*.jpg")) # Adjust for .png, etc.
-            if not image_files:
-                st.warning(f"No images found in local directory: {image_dir}. Please verify that image directory was correctly loaded in")
-                continue  # Skip to the next camera
-
-            # 2. Create a list to hold the data
-            data = []
-
-            # 3. Iterate through the images, generate predictions, and create rows for the Parquet file
-            image_files_len = len(image_files)
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-
-            for i, image_file in enumerate(image_files):
-                image_name = os.path.basename(image_file)
-                timestamp = extract_timestamp_from_filename(image_name)
-                if timestamp is None:
-                    print(f"Warning: Could not extract timestamp from filename {image_name}. Skipping.")
-                    continue
-                try:
-                    predictions = generate_predictions(image_file, "SHR_DSCAM")
-                except Exception as e:
-                    st.error(f"Error generating predictions for {image_file}: {e}")
-                    continue
-
-                for prediction in predictions:
-                    data.append({
-                        "camera_id": camera_id,
-                        "timestamp": timestamp,
-                        "image_path": image_file,  # Store local image path
-                        "class_id": prediction["class_id"],
-                        "class_name": prediction["class_name"],
-                        "bbox_x": prediction["bbox"][0],
-                        "bbox_y": prediction["bbox"][1],
-                        "bbox_width": prediction["bbox"][2],
-                        "bbox_height": prediction["bbox"][3],
-                        "confidence": prediction["confidence"],
-                    })
-                progress = (i + 1) / image_files_len
-                status_text.text(f"{progress:.2%} Complete")
-                progress_bar.progress(progress)
-
-            # 4. Create a Pandas DataFrame from the data
-            if data:
-                df = pd.DataFrame(data)
-
-                # 5. Save Parquet to local directory
-                try:
-                    df.to_parquet(parquet_file_path, engine='fastparquet')
-                    print(f"Parquet file saved to {parquet_file_path}")
-                except Exception as e:
-                    st.error(f"Error saving Parquet file locally: {e}")
-            else:
-                st.warning(f"No predictions generated for camera {camera_id}. Skipping")
-                continue
-        else:
-            print("Parquet files found!")
-
-        st.subheader(f"Camera {camera_id}")
-
-        # Add Model Selection dropdown
-        available_models = list(model_urls.keys())
-        default_model = "SHR_DSCAM"  # Set the default model
-        selected_model = st.selectbox(
-            f"See predictions from:",
-            options=available_models,
-            index=available_models.index(default_model),  # Set the default selection
-            key=f"model_{camera_id}",
-        )
-
-        # Dummy image for now
-        st.image("https://placehold.co/1024x1024", caption=f"Latest Image - {camera_id}")
-
-        # Fetch last month's predictions for time series
-        query = f"""
-        SELECT timestamp, prediction_count
-        FROM '{parquet_file_path}'
-        WHERE camera_id = '{camera_id}'
-        AND timestamp BETWEEN date('now', '-1 month') AND date('now')
-        """
-        try:
-            df = con.execute(query).fetchdf()
-            df['prediction_count'] = 1
-            #fig = px.line(df, x="timestamp", y="prediction_count", title=f"Prediction Count Over Time - {camera_id}")
-            #st.plotly_chart(fig)
-        except Exception as e:
-            st.write(f"Failed to fetch predictions: {e}")
-    else:
+    if not os.path.exists(image_dir):
         st.warning(f"No data found in local directory: {image_dir}")
+        return None
+
+    image_files = glob.glob(os.path.join(image_dir, "*.jpg"))
+    if not image_files:
+        st.warning(f"No images found in local directory: {image_dir}")
+        return None
+
+    # Find the most recent image
+    most_recent_image = max(image_files, key=os.path.getmtime)
+
+    # Generate predictions for the most recent image
+    predictions = generate_predictions(most_recent_image, "SHR_DSCAM")
+
+    # Load the image using OpenCV
+    img_cv = cv2.imread(most_recent_image)
+    img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+    img_pil = Image.open(most_recent_image)
+    img_width, img_height = img_pil.size
+
+    # Overlay predictions on the image
+    for prediction in predictions:
+        class_name = prediction["class_name"]
+        confidence = prediction["confidence"]
+        bbox_x, bbox_y, bbox_width, bbox_height = prediction["bbox_x"], prediction["bbox_y"], prediction["bbox_width"], prediction["bbox_height"]
+
+        x1 = int((bbox_x - bbox_width / 2) * img_width)
+        y1 = int((bbox_y - bbox_height / 2) * img_height)
+        x2 = int((bbox_x + bbox_width / 2) * img_width)
+        y2 = int((bbox_y + bbox_height / 2) * img_height)
+
+        cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        label = f"{class_name} {confidence:.2f}"
+        cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+    return img_cv
+
+# --- Display Images in a 2x2 Grid ---
+cols = st.columns(2)
+for i in range(2):
+    with cols[i]:
+        img = display_latest_image_with_predictions(camera_names[i])
+        if img is not None:
+            st.image(img, caption=f"Latest Image - {camera_names[i]}")
+
+cols2 = st.columns(2)
+for i in range(2):
+    with cols2[i]:
+        img = display_latest_image_with_predictions(camera_names[i+2])
+        if img is not None:
+            st.image(img, caption=f"Latest Image - {camera_names[i+2]}")
 
 # --- Dataview Button ---
-camera_option = st.selectbox("Select Camera for Detailed View", [cam for cam in camera_names if os.path.exists(os.path.join("images", cam, year_month, "predictions.parquet"))])  # Use camera_names list
+camera_option = st.selectbox("Select Camera for Detailed View", camera_names)  # Use camera_names list
 
 if st.button("Go to Dataview"):
     st.session_state.camera = camera_option
-    st.session_state.selected_model = selected_model
+    st.session_state.selected_model = "SHR_DSCAM"
     st.switch_page("pages/dataview.py")
 
 # --- Batch Processing Button ---
