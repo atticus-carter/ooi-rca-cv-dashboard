@@ -69,7 +69,7 @@ def load_model(model_name):
     models[model_name] = model
     return model
 
-def generate_predictions(image_path, model_name="SHR_DSCAM"): # Default model
+def generate_predictions(image_path, model_name="SHR_DSCAM", conf_thres=0.25, iou_thres=0.45): # Default model
     """Generates YOLO predictions for a given image using the specified model."""
     try:
         model = load_model(model_name)
@@ -80,7 +80,7 @@ def generate_predictions(image_path, model_name="SHR_DSCAM"): # Default model
 
     try:
         logging.info(f"Running YOLO inference on image: {image_path}")
-        results = model(image_path)  # Run inference
+        results = model(image_path, conf=conf_thres, iou=iou_thres)  # Run inference with thresholds
 
         predictions = []
         for result in results:

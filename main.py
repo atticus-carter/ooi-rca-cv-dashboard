@@ -65,23 +65,29 @@ def extract_timestamp_from_filename(filename):
 
 # --- Color Palette for Bounding Boxes ---
 def get_color_for_class(class_name):
-    """Generates a unique color for each class name."""
-    # Use a hash function to generate a unique integer for each class name
-    hash_value = hash(class_name) % 360
-    # Map the hash value to a color in the HSL color space
-    hue = hash_value
-    saturation = 75  # You can adjust the saturation
-    lightness = 50  # You can adjust the lightness
-    # Convert HSL to BGR (OpenCV uses BGR)
-    hsv_color = np.uint8([[[hue, saturation, lightness]]])
-    bgr_color = cv2.cvtColor(hsv_color, cv2.COLOR_HSV2BGR)[0][0].tolist()
-    return bgr_color
+    """Generates a unique vibrant color for each class name."""
+    # Predefined vibrant colors (RGB format)
+    vibrant_colors = [
+        (255, 0, 0),    # Red
+        (0, 255, 0),    # Green
+        (0, 0, 255),    # Blue
+        (255, 255, 0),  # Yellow
+        (255, 0, 255),  # Magenta
+        (0, 255, 255),  # Cyan
+        (255, 128, 0),  # Orange
+        (128, 0, 255),  # Purple
+        (255, 0, 128),  # Pink
+        (0, 255, 128),  # Spring Green
+    ]
+    # Use hash of class name to pick a color deterministically
+    color_index = hash(class_name) % len(vibrant_colors)
+    return vibrant_colors[color_index]
 
 # --- Main Streamlit App ---
 st.title("OOI RCA CV Dashboard")
 
 # --- Find Most Recent Image and Display Predictions ---
-def display_latest_image_with_predictions(camera_id, selected_model):
+def display_latest_image_with_predictions(camera_id, selected_model=None, conf_thres=0.25, iou_thres=0.45):
     image_dir = os.path.join("images", camera_id, year_month)
     if not os.path.exists(image_dir):
         st.warning(f"No data found in local directory: {image_dir}")
@@ -95,38 +101,48 @@ def display_latest_image_with_predictions(camera_id, selected_model):
     # Find the most recent image
     most_recent_image = max(image_files, key=os.path.getmtime)
 
-    # Generate predictions for the most recent image
-    predictions = generate_predictions(most_recent_image, selected_model)
-
     # Load the image using OpenCV
     img_cv = cv2.imread(most_recent_image)
     img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
-    img_pil = Image.open(most_recent_image)
-    img_width, img_height = img_pil.size
+    
+    # If a model is selected and predictions should be generated
+    if selected_model:
+        predictions = generate_predictions(most_recent_image, selected_model, conf_thres, iou_thres)
+        img_pil = Image.open(most_recent_image)
+        img_width, img_height = img_pil.size
 
-    # Overlay predictions on the image
-    for prediction in predictions:
-        if len(prediction["bbox"]) < 4:
-            logging.warning(f"Skipping prediction due to insufficient bbox elements: {prediction}")
-            continue
+        # Overlay predictions on the image
+        for prediction in predictions:
+            if len(prediction["bbox"]) < 4:
+                logging.warning(f"Skipping prediction due to insufficient bbox elements: {prediction}")
+                continue
 
-        class_name = prediction["class_name"]
-        confidence = prediction["confidence"]
-        bbox_x, bbox_y, bbox_width, bbox_height = prediction["bbox"][0], prediction["bbox"][1], prediction["bbox"][2], prediction["bbox"][3]
+            class_name = prediction["class_name"]
+            confidence = prediction["confidence"]
+            bbox_x, bbox_y, bbox_width, bbox_height = prediction["bbox"][0], prediction["bbox"][1], prediction["bbox"][2], prediction["bbox"][3]
 
-        x1 = int((bbox_x - bbox_width / 2) * img_width)
-        y1 = int((bbox_y - bbox_height / 2) * img_height)
-        x2 = int((bbox_x + bbox_width / 2) * img_width)
-        y2 = int((bbox_y + bbox_height / 2) * img_height)
+            x1 = int((bbox_x - bbox_width / 2) * img_width)
+            y1 = int((bbox_y - bbox_height / 2) * img_height)
+            x2 = int((bbox_x + bbox_width / 2) * img_width)
+            y2 = int((bbox_y + bbox_height / 2) * img_height)
 
-        color = get_color_for_class(class_name)
-        cv2.rectangle(img_cv, (x1, y1), (x2, y2), color, 2)
-        label = f"{class_name} {confidence:.2f}"
-        cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+            color = get_color_for_class(class_name)
+            cv2.rectangle(img_cv, (x1, y1), (x2, y2), color, 3)  # Thicker lines
+            
+            # Add a filled rectangle behind the text for better visibility
+            label = f"{class_name} {confidence:.2f}"
+            (label_width, label_height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)
+            cv2.rectangle(img_cv, (x1, y1 - label_height - 10), (x1 + label_width, y1), color, -1)
+            cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
 
     return img_cv
 
 # --- Display Images in a 2x2 Grid ---
+# Add global controls for confidence and IoU thresholds
+st.sidebar.header("Detection Settings")
+conf_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05)
+iou_threshold = st.sidebar.slider("IoU Threshold", 0.0, 1.0, 0.45, 0.05)
+
 cols = st.columns(2)
 for i in range(2):
     with cols[i]:
@@ -134,13 +150,25 @@ for i in range(2):
         available_models = list(model_urls.keys())
         selected_model = st.selectbox(
             f"Select Model for {camera_names[i]}",
-            options=available_models,
+            options=['None'] + available_models,
             index=0,
             key=f"model_{camera_names[i]}",
         )
-        img = display_latest_image_with_predictions(camera_names[i], selected_model)
-        if img is not None:
-            st.image(img, use_container_width=True)
+        
+        if st.button(f"Generate Predictions", key=f"generate_{camera_names[i]}"):
+            with st.spinner('Generating predictions...'):
+                img = display_latest_image_with_predictions(
+                    camera_names[i],
+                    selected_model if selected_model != 'None' else None,
+                    conf_threshold,
+                    iou_threshold
+                )
+                if img is not None:
+                    st.image(img, use_container_width=True)
+        else:
+            img = display_latest_image_with_predictions(camera_names[i])
+            if img is not None:
+                st.image(img, use_container_width=True)
 
 cols2 = st.columns(2)
 for i in range(2):
@@ -149,13 +177,25 @@ for i in range(2):
         available_models = list(model_urls.keys())
         selected_model = st.selectbox(
             f"Select Model for {camera_names[i+2]}",
-            options=available_models,
+            options=['None'] + available_models,
             index=0,
             key=f"model_{camera_names[i+2]}",
         )
-        img = display_latest_image_with_predictions(camera_names[i+2],selected_model)
-        if img is not None:
-            st.image(img, use_container_width=True)
+        
+        if st.button(f"Generate Predictions", key=f"generate_{camera_names[i+2]}"):
+            with st.spinner('Generating predictions...'):
+                img = display_latest_image_with_predictions(
+                    camera_names[i+2],
+                    selected_model if selected_model != 'None' else None,
+                    conf_threshold,
+                    iou_threshold
+                )
+                if img is not None:
+                    st.image(img, use_container_width=True)
+        else:
+            img = display_latest_image_with_predictions(camera_names[i+2])
+            if img is not None:
+                st.image(img, use_container_width=True)
 
 # --- Dataview Button ---
 camera_option = st.selectbox("Select Camera for Detailed View", camera_names)  # Use camera_names list
