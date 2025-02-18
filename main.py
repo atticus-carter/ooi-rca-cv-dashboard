@@ -14,9 +14,6 @@ from PIL import Image
 import numpy as np
 from ultralytics import YOLO
 
-# Set the runs directory (change as needed) to bypass the settings error.
-YOLO.settings.runs_dir = "/tmp/runs"
-
 # --- Configure Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
