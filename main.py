@@ -163,9 +163,11 @@ st.sidebar.header("Detection Settings")
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05)
 iou_threshold = st.sidebar.slider("IoU Threshold", 0.0, 1.0, 0.45, 0.05)
 
-# Initialize session state for images
+# Initialize session state for images and selected models
 if 'images' not in st.session_state:
     st.session_state.images = {camera_id: None for camera_id in camera_names}
+if 'selected_models' not in st.session_state:
+    st.session_state.selected_models = {camera_id: default_models[camera_id] for camera_id in camera_names}
 
 cols = st.columns(2)
 for i in range(2):
@@ -176,8 +178,9 @@ for i in range(2):
         selected_model = st.selectbox(
             f"Select Model for {camera_id}",
             options=['None'] + available_models,
-            index=available_models.index(default_models[camera_id]) + 1 if default_models[camera_id] in available_models else 0,
+            index=available_models.index(st.session_state.selected_models[camera_id]) + 1 if st.session_state.selected_models[camera_id] in available_models else 0,
             key=f"model_{camera_id}",
+            on_change=lambda cam_id=camera_id: setattr(st.session_state, 'selected_models', {**st.session_state.selected_models, cam_id: st.session_state[f"model_{cam_id}"]})
         )
         
         # Display initial image with default model predictions
@@ -193,9 +196,11 @@ for i in range(2):
 
         if st.button(f"Generate Predictions", key=f"generate_{camera_id}"):
             with st.spinner('Generating predictions...'):
+                # Use the selected model from the dropdown
+                model_to_use = st.session_state[f"model_{camera_id}"] if st.session_state[f"model_{camera_id}"] != 'None' else None
                 st.session_state.images[camera_id] = display_latest_image_with_predictions(
                     camera_id,
-                    selected_model if selected_model != 'None' else None,
+                    model_to_use,
                     conf_threshold,
                     iou_threshold
                 )
@@ -213,6 +218,7 @@ for i in range(2):
             options=['None'] + available_models,
             index=available_models.index(default_models[camera_id]) + 1 if default_models[camera_id] in available_models else 0,
             key=f"model_{camera_id}",
+            on_change=lambda cam_id=camera_id: setattr(st.session_state, 'selected_models', {**st.session_state.selected_models, cam_id: st.session_state[f"model_{cam_id}"]})
         )
         
         # Display initial image with default model predictions
@@ -228,9 +234,11 @@ for i in range(2):
 
         if st.button(f"Generate Predictions", key=f"generate_{camera_id}"):
             with st.spinner('Generating predictions...'):
+                # Use the selected model from the dropdown
+                model_to_use = st.session_state[f"model_{camera_id}"] if st.session_state[f"model_{camera_id}"] != 'None' else None
                 st.session_state.images[camera_id] = display_latest_image_with_predictions(
                     camera_id,
-                    selected_model if selected_model != 'None' else None,
+                    model_to_use,
                     conf_threshold,
                     iou_threshold
                 )
