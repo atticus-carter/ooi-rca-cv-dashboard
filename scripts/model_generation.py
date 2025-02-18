@@ -73,12 +73,13 @@ def generate_predictions(image_path, model_name="SHR_DSCAM", conf_thres=0.25, io
 
         predictions = []
         for result in results:
+            boxes = result.boxes # Get boxes from the result
             xywhn = result.boxes.xywhn  # normalized xywh
             names = result.names  # class names
             confs = result.boxes.conf  # confidence scores
             classes = result.boxes.cls.int() # class indices
 
-            for i in range(len(boxes)):
+            for i in range(len(xywhn)):
                 class_id = classes[i].item()
                 class_name = names[class_id]
                 confidence = confs[i].item()
