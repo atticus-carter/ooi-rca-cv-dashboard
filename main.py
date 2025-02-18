@@ -140,7 +140,7 @@ for i in range(2):
         )
         img = display_latest_image_with_predictions(camera_names[i], selected_model)
         if img is not None:
-            st.image(img, use_column_width=True)
+            st.image(img, use_container_width=True)
 
 cols2 = st.columns(2)
 for i in range(2):
@@ -155,7 +155,7 @@ for i in range(2):
         )
         img = display_latest_image_with_predictions(camera_names[i+2],selected_model)
         if img is not None:
-            st.image(img, use_column_width=True)
+            st.image(img, use_container_width=True)
 
 # --- Dataview Button ---
 camera_option = st.selectbox("Select Camera for Detailed View", camera_names)  # Use camera_names list
