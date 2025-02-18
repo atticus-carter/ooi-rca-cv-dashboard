@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # --- Model Management ---
 model_urls = {
-    "SHR_DSCAM": "https://huggingface.co/atticus-carter/SHR_DSCAM/raw/main/best.pt",
+    "SHR_DSCAM": "https://huggingface.co/spaces/FathomNet/RCA_Digital_Still_Cameras/resolve/main/best.pt?download=true",
     # Add other models here with their URLs
 }
 
