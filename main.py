@@ -108,6 +108,9 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
         return None
 
     image_files = glob.glob(os.path.join(image_dir, "*.jpg"))
+    # Debug: list found image files
+    st.sidebar.text(f"Found files in {image_dir}: {image_files}")
+    
     if not image_files:
         st.warning(f"No images found in local directory: {image_dir}")
         return None
