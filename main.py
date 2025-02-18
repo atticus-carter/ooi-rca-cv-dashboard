@@ -97,6 +97,9 @@ st.title("OOI RCA CV Dashboard")
 # --- Find Most Recent Image and Display Predictions ---
 def display_latest_image_with_predictions(camera_id, selected_model=None, conf_thres=0.25, iou_thres=0.45):
     image_dir = os.path.join("images", camera_id, year_month)
+    if not os.path.exists("images"):
+        st.warning("No 'images' directory found in the root of the application.")
+        return None
     if not os.path.exists(image_dir):
         st.warning(f"No data found in local directory: {image_dir}")
         return None
