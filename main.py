@@ -115,11 +115,10 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
         st.warning(f"No images found in local directory: {image_dir}")
         return None
 
-    # Debug: show the absolute image directory
-    st.sidebar.text(f"Looking in: {image_dir}")
+    # Find the most recent image
+    most_recent_image = max(image_files, key=os.path.getmtime)
 
     # Load the image using OpenCV
-    most_recent_image = max(image_files, key=os.path.getmtime)
     img_cv = cv2.imread(most_recent_image)
     img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
     img_pil = Image.open(most_recent_image)
@@ -164,6 +163,10 @@ st.sidebar.header("Detection Settings")
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05)
 iou_threshold = st.sidebar.slider("IoU Threshold", 0.0, 1.0, 0.45, 0.05)
 
+# Initialize session state for images
+if 'images' not in st.session_state:
+    st.session_state.images = {camera_id: None for camera_id in camera_names}
+
 cols = st.columns(2)
 for i in range(2):
     with cols[i]:
@@ -178,25 +181,26 @@ for i in range(2):
         )
         
         # Display initial image with default model predictions
-        img = display_latest_image_with_predictions(
-            camera_id,
-            default_models[camera_id],
-            conf_threshold,
-            iou_threshold
-        )
-        if img is not None:
-            st.image(img, use_container_width=True)
+        if st.session_state.images[camera_id] is None:
+            st.session_state.images[camera_id] = display_latest_image_with_predictions(
+                camera_id,
+                default_models[camera_id],
+                conf_threshold,
+                iou_threshold
+            )
+        if st.session_state.images[camera_id] is not None:
+            st.image(st.session_state.images[camera_id], use_container_width=True)
 
         if st.button(f"Generate Predictions", key=f"generate_{camera_id}"):
             with st.spinner('Generating predictions...'):
-                img = display_latest_image_with_predictions(
+                st.session_state.images[camera_id] = display_latest_image_with_predictions(
                     camera_id,
                     selected_model if selected_model != 'None' else None,
                     conf_threshold,
                     iou_threshold
                 )
-                if img is not None:
-                    st.image(img, use_container_width=True)
+                if st.session_state.images[camera_id] is not None:
+                    st.image(st.session_state.images[camera_id], use_container_width=True)
 
 cols2 = st.columns(2)
 for i in range(2):
@@ -212,25 +216,26 @@ for i in range(2):
         )
         
         # Display initial image with default model predictions
-        img = display_latest_image_with_predictions(
-            camera_id,
-            default_models[camera_id],
-            conf_threshold,
-            iou_threshold
-        )
-        if img is not None:
-            st.image(img, use_container_width=True)
+        if st.session_state.images[camera_id] is None:
+            st.session_state.images[camera_id] = display_latest_image_with_predictions(
+                camera_id,
+                default_models[camera_id],
+                conf_threshold,
+                iou_threshold
+            )
+        if st.session_state.images[camera_id] is not None:
+            st.image(st.session_state.images[camera_id], use_container_width=True)
 
         if st.button(f"Generate Predictions", key=f"generate_{camera_id}"):
             with st.spinner('Generating predictions...'):
-                img = display_latest_image_with_predictions(
+                st.session_state.images[camera_id] = display_latest_image_with_predictions(
                     camera_id,
                     selected_model if selected_model != 'None' else None,
                     conf_threshold,
                     iou_threshold
                 )
-                if img is not None:
-                    st.image(img, use_container_width=True)
+                if st.session_state.images[camera_id] is not None:
+                    st.image(st.session_state.images[camera_id], use_container_width=True)
 
 # --- Dataview Button ---
 camera_option = st.selectbox("Select Camera for Detailed View", camera_names)  # Use camera_names list

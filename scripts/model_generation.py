@@ -69,7 +69,7 @@ def generate_predictions(image_path, model_name="SHR_DSCAM", conf_thres=0.25, io
 
     try:
         logging.info(f"Running YOLO inference on image: {image_path}")
-        results = model(image_path, conf=conf_thres, iou=iou_thres)  # Run inference with thresholds
+        results = model(image_path, imgsz=1024, conf=conf_thres, iou=iou_thres)  # Run inference with thresholds and image size
 
         predictions = []
         for result in results:
