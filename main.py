@@ -2,17 +2,33 @@ import os
 import glob
 import pandas as pd
 import duckdb
-import streamlit as st  # Import Streamlit
-from scripts.model_generation import generate_predictions, model_urls # Replace with your path
+import streamlit as st
+from scripts.model_generation import generate_predictions, model_urls
 import re
-import boto3  # Import boto3
+import boto3
+import torch
+import time  # Import the time module
+import yaml  # Import the YAML module
+import subprocess  # Import subprocess
+
+# --- Load Configuration ---
+try:
+    with open("config.yaml", "r") as f:
+        config = yaml.safe_load(f)
+    bucket_name = config["bucket_name"]
+    year_month = config["year_month"]
+except FileNotFoundError:
+    st.error("Configuration file 'config.yaml' not found.  Please create one.")
+    st.stop()
+except yaml.YAMLError as e:
+    st.error(f"Error parsing 'config.yaml': {e}")
+    st.stop()
+except KeyError as e:
+    st.error(f"Missing key in 'config.yaml': {e}")
+    st.stop()
 
 # --- Camera Names ---
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
-
-# --- Configuration (Adjust these) ---
-bucket_name = "ooi-rca-cv-data-aws"  # Your S3 bucket name
-year_month = "2021-08"  # The year and month of the data
 
 # --- Function to extract timestamp from filename ---
 def extract_timestamp_from_filename(filename):
@@ -42,17 +58,16 @@ try:
     )
     print("Successfully created S3 client.")
 except Exception as e:
-    st.error(f"Error creating S3 client: {e}")
+    st.error(f"Error creating S3 client: {e}. Check your AWS credentials in Streamlit secrets.")
     st.stop()
 
 # Connect to DuckDB (in-memory for this example)
 con = duckdb.connect(database=':memory:', read_only=False)
 
 # --- Camera Selection ---
-for camera_id in camera_names:  # Changed to iterate over camera_names list
-
+for camera_id in camera_names:
     # --- Set local directory
-    local_image_dir = f"{camera_id}_data_{year_month}"  # Use data_YYYY-MM format
+    local_image_dir = f"{camera_id}_data_{year_month}"
 
     # --- Define data S3 path
     data_s3_path = f"s3://{bucket_name}/{camera_id}/data_{year_month}"
@@ -62,13 +77,13 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
         response = s3.list_objects_v2(Bucket=bucket_name, Prefix=f"{camera_id}/data_{year_month}/")
         has_data = "Contents" in response
     except Exception as e:
-        st.error(f"Error accessing S3 bucket: {e}")
+        st.error(f"Error accessing S3 bucket: {e}.  Check bucket name and permissions.")
         has_data = False
 
     # --- Check if data exists in s3 ---
     if has_data:
         # --- Set local directory
-        local_image_dir = f"{camera_id}_data_{year_month}"  # Use data_YYYY-MM format
+        local_image_dir = f"{camera_id}_data_{year_month}"
 
         # --- Check if the Parquet File has been created. If not create it ---
         parquet_file_path = f"{local_image_dir}/predictions.parquet"
@@ -86,14 +101,22 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
             data = []
 
             # 3. Iterate through the images, generate predictions, and create rows for the Parquet file
-            for image_file in image_files:
+            image_files_len = len(image_files)
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            for i, image_file in enumerate(image_files):
                 image_name = os.path.basename(image_file)
-                timestamp = extract_timestamp_from_filename(image_name) # Extract timestamp from filename
+                timestamp = extract_timestamp_from_filename(image_name)
                 if timestamp is None:
                     print(f"Warning: Could not extract timestamp from filename {image_name}. Skipping.")
                     continue
                 image_s3_path = f"{data_s3_path}/{image_name}"
-                predictions = generate_predictions(image_file, "SHR_DSCAM") # Replace with your desired model
+                try:
+                    predictions = generate_predictions(image_file, "SHR_DSCAM")
+                except Exception as e:
+                    st.error(f"Error generating predictions for {image_file}: {e}")
+                    continue
 
                 for prediction in predictions:
                     data.append({
@@ -108,31 +131,60 @@ for camera_id in camera_names:  # Changed to iterate over camera_names list
                         "bbox_height": prediction["bbox"][3],
                         "confidence": prediction["confidence"],
                     })
+                progress = (i + 1) / image_files_len
+                status_text.text(f"{progress:.2%} Complete")
+                progress_bar.progress(progress)
 
             # 4. Create a Pandas DataFrame from the data
-            if data: # Check to ensure data is not empty, skip to next if so
+            if data:
                 df = pd.DataFrame(data)
 
                 # 5. Define the S3 path for the Parquet file
                 parquet_s3_path = f"{data_s3_path}/predictions.parquet"
 
-                # 6. Upload images to S3
-                s3_client = boto3.client("s3")
+                # 6. Upload images to S3 with retry
+                s3_client = boto3.client(
+                    "s3",
+                    aws_access_key_id=st.secrets["connections.s3"]["aws_access_key_id"],
+                    aws_secret_access_key=st.secrets["connections.s3"]["aws_secret_access_key"],
+                    region_name=st.secrets["connections.s3"]["region_name"],
+                )
+
+                def upload_with_retry(filename, bucket, key, retries=3, delay=2):
+                    for attempt in range(retries):
+                        try:
+                            s3_client.upload_file(filename, bucket, key)
+                            print(f"Uploaded {filename} to s3://{bucket}/{key}")
+                            return True
+                        except Exception as e:
+                            print(f"Error uploading {filename} (attempt {attempt + 1}/{retries}): {e}")
+                            if attempt < retries - 1:
+                                time.sleep(delay)  # Wait before retrying
+                            else:
+                                st.error(f"Failed to upload {filename} to S3 after multiple retries: {e}")
+                                return False
+
                 for image_file in image_files:
                     image_name = os.path.basename(image_file)
-                    s3_client.upload_file(image_file, bucket_name, f"{camera_id}/data_{year_month}/{image_name}")
-                    print(f"Uploaded {image_file} to s3://{bucket_name}/{camera_id}/data_{year_month}/{image_name}")
+                    s3_key = f"{camera_id}/data_{year_month}/{image_name}"
+                    upload_with_retry(image_file, bucket_name, s3_key)
 
                 # 7. Save to Parquet directly to S3
-                df.to_parquet(parquet_s3_path, engine='fastparquet') # Important:  Install fastparquet!
-                print(f"Parquet file saved to {parquet_s3_path}")
+                try:
+                    df.to_parquet(parquet_s3_path, engine='fastparquet')
+                    print(f"Parquet file saved to {parquet_s3_path}")
+                except Exception as e:
+                    st.error(f"Error saving Parquet file to S3: {e}")
 
                 # 8. Save Parquet to local directory for streamlit connection
-                df.to_parquet(parquet_file_path, engine='fastparquet') # Important:  Install fastparquet!
-                print(f"Parquet file saved to {parquet_file_path}")
+                try:
+                    df.to_parquet(parquet_file_path, engine='fastparquet')
+                    print(f"Parquet file saved to {parquet_file_path}")
+                except Exception as e:
+                    st.error(f"Error saving Parquet file locally: {e}")
             else:
                 st.warning(f"No predictions generated for camera {camera_id}. Skipping")
-                continue # Skip to the next camera
+                continue
         else:
             print("Parquet files found!")
 
@@ -176,3 +228,19 @@ if st.button("Go to Dataview"):
     st.session_state.selected_model = selected_model
     st.session_state.bucket_name = bucket_name # Passing the bucket name
     st.switch_page("pages/dataview.py") # You would need to create dataview.py in a pages directory
+
+# --- Batch Processing Button ---
+if st.button("Run Batch Processing"):
+    try:
+        subprocess.run(["python", "batch_processing.py"], check=True)
+        st.success("Batch processing completed successfully!")
+    except subprocess.CalledProcessError as e:
+        st.error(f"Batch processing failed: {e}")
+
+# --- Data Analysis Page Link ---
+if st.button("Go to Data Analysis"):
+    st.switch_page("pages/data_analysis.py")
+
+# --- Camera Map Page Link ---
+if st.button("View Camera Map"):
+    st.switch_page("pages/camera_map.py")
