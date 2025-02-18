@@ -7,3 +7,4 @@ streamlit
 opencv-python
 st_files_connection
 plotly
+dill
