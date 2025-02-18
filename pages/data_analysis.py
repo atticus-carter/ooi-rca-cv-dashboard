@@ -1,32 +1,19 @@
 import streamlit as st
 import pandas as pd
-import boto3
 import duckdb
 import plotly.express as px
 import yaml
 from datetime import datetime, timedelta
+import os
 
 # Load configuration
 with open("config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-bucket_name = config["bucket_name"]
-region_name = config["region_name"]
+year_month = config["year_month"]
 
 # Camera names
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
-
-# --- AWS Authentication ---
-try:
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),  # Use environment variables
-        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
-        region_name=region_name,
-    )
-except Exception as e:
-    st.error(f"Error during AWS authentication: {e}")
-    st.stop()
 
 st.title("Data Analysis")
 
@@ -45,23 +32,18 @@ end_date = st.sidebar.date_input("End Date", today)
 # Class selection
 all_classes = []
 for camera_id in selected_cameras:
-    prefix = f"{camera_id}/predictions/"
-    try:
-        response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix, Delimiter='/')
-        dates = [d['Prefix'].split('/')[-2] for d in response.get('CommonPrefixes', [])]
-        for date in dates:
-            parquet_prefix = f"{camera_id}/predictions/{date}/"
-            response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=parquet_prefix)
-            for obj in response.get('Contents', []):
-                if obj['Key'].endswith('.parquet'):
-                    parquet_file = f"s3://{bucket_name}/{obj['Key']}"
-                    try:
-                        df = pd.read_parquet(parquet_file)
-                        all_classes.extend(df['class_name'].unique().tolist())
-                    except Exception as e:
-                        st.error(f"Error reading parquet file {parquet_file}: {e}")
-    except Exception as e:
-        st.error(f"Error listing objects in S3: {e}")
+    parquet_dir = os.path.join("images", camera_id, "predictions")
+    if not os.path.exists(parquet_dir):
+        continue
+    for date_dir in os.listdir(parquet_dir):
+        if date_dir.startswith("date="):
+            parquet_files = glob.glob(os.path.join(parquet_dir, date_dir, "*.parquet"))
+            for parquet_file in parquet_files:
+                try:
+                    df = pd.read_parquet(parquet_file)
+                    all_classes.extend(df['class_name'].unique().tolist())
+                except Exception as e:
+                    st.error(f"Error reading parquet file {parquet_file}: {e}")
 
 unique_classes = list(set(all_classes))
 selected_classes = st.sidebar.multiselect("Select Classes", unique_classes, default=unique_classes)
@@ -71,26 +53,22 @@ selected_classes = st.sidebar.multiselect("Select Classes", unique_classes, defa
 def load_data(cameras, start, end, classes):
     data = []
     for camera_id in cameras:
-        prefix = f"{camera_id}/predictions/"
-        try:
-            response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix, Delimiter='/')
-            dates = [d['Prefix'].split('/')[-2] for d in response.get('CommonPrefixes', [])]
-            for date in dates:
-                date_dt = datetime.strptime(date, '%Y-%m')
-                if start.year <= date_dt.year <= end.year and start.month <= date_dt.month <= end.month:
-                    parquet_prefix = f"{camera_id}/predictions/{date}/"
-                    response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=parquet_prefix)
-                    for obj in response.get('Contents', []):
-                        if obj['Key'].endswith('.parquet'):
-                            parquet_file = f"s3://{bucket_name}/{obj['Key']}"
-                            try:
-                                df = pd.read_parquet(parquet_file)
-                                df = df[df['class_name'].isin(classes)]
-                                data.append(df)
-                            except Exception as e:
-                                st.error(f"Error reading parquet file {parquet_file}: {e}")
-        except Exception as e:
-            st.error(f"Error listing objects in S3: {e}")
+        parquet_dir = os.path.join("images", camera_id, "predictions")
+        if not os.path.exists(parquet_dir):
+            continue
+        for date_dir in os.listdir(parquet_dir):
+            if date_dir.startswith("date="):
+                date_str = date_dir.split("=")[1]
+                date_dt = datetime.strptime(date_str, '%Y-%m-%d')
+                if start.year <= date_dt.year <= end.year and start.month <= date_dt.month <= end.month and start.day <= date_dt.day <= end.day:
+                    parquet_files = glob.glob(os.path.join(parquet_dir, date_dir, "*.parquet"))
+                    for parquet_file in parquet_files:
+                        try:
+                            df = pd.read_parquet(parquet_file)
+                            df = df[df['class_name'].isin(classes)]
+                            data.append(df)
+                        except Exception as e:
+                            st.error(f"Error reading parquet file {parquet_file}: {e}")
     if data:
         df = pd.concat(data)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
