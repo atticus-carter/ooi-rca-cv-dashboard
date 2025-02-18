@@ -3,11 +3,11 @@ boto3
 pandas
 pyarrow
 fastparquet
-torch
+torch==1.13.1
 torchvision
 torchaudio
 ultralytics
-streamlit
+streamlit==1.29.0
 opencv-python
 st_files_connection
 plotly
