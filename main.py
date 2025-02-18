@@ -107,8 +107,8 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
         st.warning(f"No data found in local directory: {image_dir}")
         return None
 
-    image_files = glob.glob(os.path.join(image_dir, "*.jpg"))
-    # Debug: list found image files
+    # Use a glob pattern that matches both ".jpg" and ".png"
+    image_files = glob.glob(os.path.join(image_dir, "*.[jJ][pP][gG]")) + glob.glob(os.path.join(image_dir, "*.[pP][nN][gG]"))
     st.sidebar.text(f"Found files in {image_dir}: {image_files}")
     
     if not image_files:
@@ -119,6 +119,7 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
     st.sidebar.text(f"Looking in: {image_dir}")
 
     # Load the image using OpenCV
+    most_recent_image = max(image_files, key=os.path.getmtime)
     img_cv = cv2.imread(most_recent_image)
     img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
     img_pil = Image.open(most_recent_image)

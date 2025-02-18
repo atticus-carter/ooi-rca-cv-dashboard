@@ -30,7 +30,7 @@ def batch_process_camera_data(camera_id, year_month, model_name, config):
     parquet_prefix = os.path.join("images", camera_id, "predictions")  # Local prefix for partitioned Parquet files
 
     # List image files in the local directory
-    image_files = glob.glob(os.path.join(image_dir, "*.jpg"))  # Adjust for other image formats
+    image_files = glob.glob(os.path.join(image_dir, "*.[jJ][pP][gG]")) + glob.glob(os.path.join(image_dir, "*.[pP][nN][gG]"))
     if not image_files:
         logging.warning(f"No images found in local directory: {image_dir}")
         print(f"No images found in local directory: {image_dir}")
