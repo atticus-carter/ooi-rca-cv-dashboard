@@ -10,6 +10,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # --- Model Management ---
 model_urls = {
     "SHR_DSCAM": "https://huggingface.co/spaces/FathomNet/RCA_Digital_Still_Cameras/resolve/main/best.pt?download=true",
+    "Megalodon": "https://huggingface.co/FathomNet/megalodon/resolve/main/best.pt?download=true",
+    "315K": "https://huggingface.co/FathomNet/MBARI-315k-yolov8/resolve/main/mbari_315k_yolov8.pt?download=true"
     # Add other models here with their URLs
 }
 
