@@ -15,6 +15,9 @@ import subprocess  # Import subprocess
 try:
     with open("config.yaml", "r") as f:
         config = yaml.safe_load(f)
+    if config is None:
+        st.error("Configuration file 'config.yaml' is empty or contains invalid YAML.")
+        st.stop()
     bucket_name = config["bucket_name"]
     year_month = config["year_month"]
 except FileNotFoundError:
