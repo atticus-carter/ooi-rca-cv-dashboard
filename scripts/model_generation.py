@@ -31,7 +31,16 @@ def load_model(model_name):
         else:
             # Download the model to a temporary file
             temp_model_path = "best.pt"
-            urllib.request.urlretrieve(url, temp_model_path)
+            try:
+                urllib.request.urlretrieve(url, temp_model_path)
+            except Exception as e:
+                logging.error(f"Error downloading model '{model_name}' from URL: {url}", exc_info=True)
+                raise Exception(f"Error downloading model '{model_name}' from URL: {e}")
+
+            if not temp_model_path.endswith(".pt"):
+                os.remove(temp_model_path)
+                raise ValueError(f"Downloaded model file is not a valid PyTorch model (.pt): {temp_model_path}")
+
             model = YOLO(temp_model_path)  # Load from temp file
             logging.info(f"Model '{model_name}' loaded from URL: {url}")
     except Exception as e:
