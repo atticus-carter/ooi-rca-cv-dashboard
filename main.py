@@ -52,6 +52,14 @@ except Exception as e:
 # --- Camera Names ---
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
 
+# --- Default Models ---
+default_models = {
+    "PC01A_CAMDSC102": "Megalodon",
+    "LV01C_CAMDSB106": "315K",
+    "MJ01C_CAMDSB107": "315K",
+    "MJ01B_CAMDSB103": "SHR_DSCAM"
+}
+
 # --- Function to extract timestamp from filename ---
 def extract_timestamp_from_filename(filename):
     """Extracts timestamp from the filename."""
@@ -104,12 +112,15 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
     # Load the image using OpenCV
     img_cv = cv2.imread(most_recent_image)
     img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
-    
-    # If a model is selected and predictions should be generated
-    if selected_model:
-        predictions = generate_predictions(most_recent_image, selected_model, conf_thres, iou_thres)
-        img_pil = Image.open(most_recent_image)
-        img_width, img_height = img_pil.size
+    img_pil = Image.open(most_recent_image)
+    img_width, img_height = img_pil.size
+
+    # Determine the model to use
+    model_to_use = selected_model if selected_model != 'None' else None
+
+    # Generate predictions for the most recent image
+    if model_to_use:
+        predictions = generate_predictions(most_recent_image, model_to_use, conf_thres, iou_thres)
 
         # Overlay predictions on the image
         for prediction in predictions:
@@ -146,56 +157,70 @@ iou_threshold = st.sidebar.slider("IoU Threshold", 0.0, 1.0, 0.45, 0.05)
 cols = st.columns(2)
 for i in range(2):
     with cols[i]:
-        st.subheader(camera_names[i])
+        camera_id = camera_names[i]
+        st.subheader(camera_id)
         available_models = list(model_urls.keys())
         selected_model = st.selectbox(
-            f"Select Model for {camera_names[i]}",
+            f"Select Model for {camera_id}",
             options=['None'] + available_models,
-            index=0,
-            key=f"model_{camera_names[i]}",
+            index=available_models.index(default_models[camera_id]) + 1 if default_models[camera_id] in available_models else 0,
+            key=f"model_{camera_id}",
         )
         
-        if st.button(f"Generate Predictions", key=f"generate_{camera_names[i]}"):
+        # Display initial image with default model predictions
+        img = display_latest_image_with_predictions(
+            camera_id,
+            default_models[camera_id],
+            conf_threshold,
+            iou_threshold
+        )
+        if img is not None:
+            st.image(img, use_container_width=True)
+
+        if st.button(f"Generate Predictions", key=f"generate_{camera_id}"):
             with st.spinner('Generating predictions...'):
                 img = display_latest_image_with_predictions(
-                    camera_names[i],
+                    camera_id,
                     selected_model if selected_model != 'None' else None,
                     conf_threshold,
                     iou_threshold
                 )
                 if img is not None:
                     st.image(img, use_container_width=True)
-        else:
-            img = display_latest_image_with_predictions(camera_names[i])
-            if img is not None:
-                st.image(img, use_container_width=True)
 
 cols2 = st.columns(2)
 for i in range(2):
     with cols2[i]:
-        st.subheader(camera_names[i+2])
+        camera_id = camera_names[i+2]
+        st.subheader(camera_id)
         available_models = list(model_urls.keys())
         selected_model = st.selectbox(
-            f"Select Model for {camera_names[i+2]}",
+            f"Select Model for {camera_id}",
             options=['None'] + available_models,
-            index=0,
-            key=f"model_{camera_names[i+2]}",
+            index=available_models.index(default_models[camera_id]) + 1 if default_models[camera_id] in available_models else 0,
+            key=f"model_{camera_id}",
         )
         
-        if st.button(f"Generate Predictions", key=f"generate_{camera_names[i+2]}"):
+        # Display initial image with default model predictions
+        img = display_latest_image_with_predictions(
+            camera_id,
+            default_models[camera_id],
+            conf_threshold,
+            iou_threshold
+        )
+        if img is not None:
+            st.image(img, use_container_width=True)
+
+        if st.button(f"Generate Predictions", key=f"generate_{camera_id}"):
             with st.spinner('Generating predictions...'):
                 img = display_latest_image_with_predictions(
-                    camera_names[i+2],
+                    camera_id,
                     selected_model if selected_model != 'None' else None,
                     conf_threshold,
                     iou_threshold
                 )
                 if img is not None:
                     st.image(img, use_container_width=True)
-        else:
-            img = display_latest_image_with_predictions(camera_names[i+2])
-            if img is not None:
-                st.image(img, use_container_width=True)
 
 # --- Dataview Button ---
 camera_option = st.selectbox("Select Camera for Detailed View", camera_names)  # Use camera_names list
