@@ -2,14 +2,14 @@ import os
 from ultralytics import YOLO
 import logging
 import urllib.request  # Import urllib
-import torch
+import glob  # Import glob
 
 # --- Configure Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Model Management ---
 model_urls = {
-    "SHR_DSCAM": "https://huggingface.co/spaces/FathomNet/RCA_Digital_Still_Cameras/resolve/main/best.pt?download=true",
+    "SHR_DSCAM": "https://huggingface.co/atticus-carter/SHR_DSCAM/raw/main/best.pt",
     "Megalodon": "https://huggingface.co/FathomNet/megalodon/resolve/main/best.pt?download=true",
     "315K": "https://huggingface.co/FathomNet/MBARI-315k-yolov8/resolve/main/mbari_315k_yolov8.pt?download=true"
     # Add other models here with their URLs
@@ -28,17 +28,14 @@ def load_model(model_name):
 
     try:
         # Check if the model is a local file or URL
-        if os.path.exists("best.pt"):
-            # Verify the file integrity
-            try:
-                torch.load("best.pt", map_location=torch.device('cpu'))
-            except Exception as e:
-                logging.error(f"Error loading local model file 'best.pt' with torch: {e}", exc_info=True)
-                os.remove("best.pt")  # Remove corrupted file
-                raise Exception(f"Error loading local model file 'best.pt' with torch: {e}")
+        # Search for a .pt file in the weights directory
+        weights_dir = "."  # Assuming the weights are in the root directory
+        pt_files = glob.glob(os.path.join(weights_dir, "*.pt"))
 
-            model = YOLO("best.pt")  # Load local model
-            logging.info(f"Model '{model_name}' loaded from local file: best.pt")
+        if pt_files:
+            model_path = pt_files[0]  # Take the first .pt file found
+            model = YOLO(model_path)  # Load local model
+            logging.info(f"Model '{model_name}' loaded from local file: {model_path}")
         else:
             # Download the model to a temporary file
             temp_model_path = "best.pt"
@@ -51,14 +48,6 @@ def load_model(model_name):
             if not temp_model_path.endswith(".pt"):
                 os.remove(temp_model_path)
                 raise ValueError(f"Downloaded model file is not a valid PyTorch model (.pt): {temp_model_path}")
-
-            # Verify the file integrity
-            try:
-                torch.load(temp_model_path, map_location=torch.device('cpu'))
-            except Exception as e:
-                logging.error(f"Error loading downloaded model file '{temp_model_path}' with torch: {e}", exc_info=True)
-                os.remove(temp_model_path)  # Remove corrupted file
-                raise Exception(f"Error loading downloaded model file '{temp_model_path}' with torch: {e}")
 
             model = YOLO(temp_model_path)  # Load from temp file
             logging.info(f"Model '{model_name}' loaded from URL: {url}")
