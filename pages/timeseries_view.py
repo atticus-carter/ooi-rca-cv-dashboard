@@ -56,18 +56,21 @@ granularity = st.selectbox("Select Granularity", ["Hourly", "Daily", "Monthly"])
 
 if granularity == "Hourly":
     data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
+    data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
     data.set_index('timestamp', inplace=True)
     numeric_data = data.select_dtypes(include=['number'])  # Select only numeric columns
     data = numeric_data.resample('H').mean().reset_index()
 elif granularity == "Daily":
     data['timestamp'] = pd.to_datetime(data['date'])
+    data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
     data.set_index('timestamp', inplace=True)
-    numeric_data = data.select_dtypes(include=['number'])  # Select only numeric columns
+    numeric_data = data.select_dtypes(include(['number']))  # Select only numeric columns
     data = numeric_data.resample('D').mean().reset_index()
 elif granularity == "Monthly":
     data['timestamp'] = pd.to_datetime(data['date'])
+    data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
     data.set_index('timestamp', inplace=True)
-    numeric_data = data.select_dtypes(include=['number'])  # Select only numeric columns
+    numeric_data = data.select_dtypes(include(['number']))  # Select only numeric columns
     data = numeric_data.resample('M').mean().reset_index()
 
 # --- Plotting Options ---
