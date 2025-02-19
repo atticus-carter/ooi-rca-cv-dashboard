@@ -12,3 +12,5 @@ statsmodels
 pymannkendall
 scikit-learn
 scipy
+ruptures
+networkx
