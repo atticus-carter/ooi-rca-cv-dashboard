@@ -361,6 +361,28 @@ if len(ts_decomp) >= 14:  # need at least two periods (e.g., 7-day period)
     fig_decomp.add_trace(go.Scatter(x=ts_decomp.index, y=decomp_result.resid, mode='lines', name='Residual'))
     fig_decomp.update_layout(title="Seasonal Decomposition (7-day Period)", xaxis_title="Date", yaxis_title="Value")
     st.plotly_chart(fig_decomp)
+    
+    # --- Plain Language Summary ---
+    # Compute variance explained by seasonal component
+    variance_total = np.var(ts_decomp)
+    var_seasonal = np.var(decomp_result.seasonal.dropna())
+    explained = (var_seasonal / variance_total) * 100
+    st.write(f"Plain Language Summary: The seasonal component explains approximately {explained:.1f}% of the total variation in total annotations.")
+
+    # --- FFT Analysis ---
+    # Detrend the time series by subtracting its mean
+    ts_detrended = ts_decomp - np.mean(ts_decomp)
+    N = len(ts_detrended)
+    fft_vals = np.fft.fft(ts_detrended)
+    fft_freq = np.fft.fftfreq(N, d=1)  # Assuming a daily sampling period
+    
+    # Keep only the positive frequencies
+    positive = fft_freq > 0
+    fig_fft = go.Figure()
+    fig_fft.add_trace(go.Scatter(x=fft_freq[positive], y=np.abs(fft_vals)[positive], mode='lines+markers', name='FFT Amplitude'))
+    fig_fft.update_layout(title="FFT of Total Annotations", xaxis_title="Frequency (cycles per day)", yaxis_title="Amplitude")
+    st.plotly_chart(fig_fft)
+
 else:
     st.write("Not enough data for seasonal decomposition.")
 
