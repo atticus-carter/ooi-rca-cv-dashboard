@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.title("Underwater Camera Locations")
+st.title("Camera Locations")
 
 # Camera coordinates and names
 camera_locations = {

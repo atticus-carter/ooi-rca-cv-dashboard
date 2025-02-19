@@ -104,6 +104,16 @@ def get_color_for_class(class_name):
 # --- Main Streamlit App ---
 st.title("OOI RCA CV Dashboard")
 
+# --- Git LFS Check ---
+st.sidebar.header("Git LFS Status")
+try:
+    lfs_output = subprocess.check_output(["git", "lfs", "version"]).decode("utf-8")
+    st.sidebar.success(f"Git LFS is installed:\n{lfs_output}")
+except subprocess.CalledProcessError as e:
+    st.sidebar.error(f"Git LFS is not installed or not working:\n{e.output.decode('utf-8')}")
+except FileNotFoundError:
+    st.sidebar.error("Git LFS is not installed: git lfs command not found")
+
 # --- Find Most Recent Image and Display Predictions ---
 def display_latest_image_with_predictions(camera_id, selected_model=None, conf_thres=0.25, iou_thres=0.45):
     image_url = camera_data[camera_id]

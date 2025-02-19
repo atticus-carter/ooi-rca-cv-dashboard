@@ -4,9 +4,14 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    git-lfs \
     libgl1-mesa-glx \
     libx11-6 \
  && rm -rf /var/lib/apt/lists/*
+
+# Install Git LFS
+RUN git lfs install
 
 # Copy requirements file
 COPY requirements.txt .
