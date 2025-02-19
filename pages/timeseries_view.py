@@ -161,23 +161,27 @@ else:
 # --- Per Class Graphs ---
 st.subheader("Per Class Graphs")
 
+from plotly.subplots import make_subplots  # Import make_subplots
+
 unique_classes = data['class_name'].unique()
 num_classes = len(unique_classes)
 
-# Create subplots
-fig_class = go.Figure()
+# Create subplots: one row per unique class, shared x-axis
+fig_class = make_subplots(rows=num_classes, cols=1, subplot_titles=unique_classes, shared_xaxes=True)
 
-# Add traces for each class
 for i, class_name in enumerate(unique_classes):
     class_data = data[data['class_name'] == class_name]
-    fig_class.add_trace(go.Scatter(x=class_data['timestamp'], y=class_data['animal_count'], mode='lines', name=class_name))
+    fig_class.add_trace(
+        go.Scatter(x=class_data['timestamp'], y=class_data['animal_count'], mode='lines', name=class_name),
+        row=i+1, col=1
+    )
 
-# Update layout
 fig_class.update_layout(
     title="Animal Counts Over Time by Class",
     xaxis_title="Time",
     yaxis_title="Animal Count",
-    template='plotly_white'
+    template='plotly_white',
+    height=300*num_classes  # Adjust height per subplot
 )
 
 st.plotly_chart(fig_class)
