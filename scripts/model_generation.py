@@ -103,11 +103,15 @@ def generate_predictions(img_array, model_name="SHR_DSCAM", conf_thres=0.25, iou
             xywhn = result.boxes.xywhn  # normalized xywh
             names = result.names  # class names
             confs = result.boxes.conf  # confidence scores
-            classes = result.boxes.cls.int()  # class indices
+            classes = result.boxes.cls  # class indices
 
             for i, box in enumerate(boxes):
                 class_id = int(box.cls[0].item())  # Extract class ID from the box
-                class_name = names[class_id]
+                try:
+                    class_name = names[class_id]
+                except KeyError as e:
+                    logging.error(f"KeyError: Class ID {class_id} not found in names dictionary. Names dictionary keys: {names.keys()}")
+                    class_name = "Unknown"  # Default class name if not found
                 confidence = confs[i].item()
                 bbox = xywhn[i].tolist()  # Normalized xywh (center x, center y, width, height)
                 predictions.append({
