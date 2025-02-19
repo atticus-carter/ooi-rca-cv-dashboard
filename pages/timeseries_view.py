@@ -299,10 +299,28 @@ if selected_metrics:
     - **Total Annotations**: Total number of annotations across all species
     """)
 
-# --- ARIMA Forecasting for Total Annotations (7-day Avg) ---
+# --- Advanced Ecological Analysis ---
+st.subheader("Advanced Ecological Analysis")
+
+# Mann-Kendall Trend Test on Total Annotations (7-day Avg)
+try:
+    import pymannkendall as mk
+    ts = diversity_metrics['Total_Annotations_7d'].dropna()  # Use the correct column name
+    if len(ts) >= 10:
+        result = mk.original_test(ts)
+        st.write("Mann-Kendall Trend Test on Total Annotations (7d Avg):")
+        st.write(f"Trend: {result.trend}, p-value: {result.p}")
+    else:
+        st.warning("Not enough data for Mann-Kendall test (need at least 10 data points)")
+except ImportError:
+    st.warning("pymannkendall library not installed. Skipping Mann-Kendall trend test.")
+except Exception as e:
+    st.error(f"Error performing Mann-Kendall test: {e}")
+
+# ARIMA Forecasting for Total Annotations (7-day Avg)
 try:
     from statsmodels.tsa.arima.model import ARIMA
-    ts = species_counts['total_annotations_7d_avg'].dropna()
+    ts = diversity_metrics['Total_Annotations_7d'].dropna()  # Use the correct column name
     if len(ts) >= 10:  # Ensure we have enough data points
         model_arima = ARIMA(ts, order=(1,1,1)).fit()
         forecast = model_arima.get_forecast(steps=10)
