@@ -83,12 +83,15 @@ st.plotly_chart(fig)
 
 # --- Ecology Metrics ---
 st.subheader("Ecology Metrics")
-total_counts = data.groupby('class_name')['animal_count'].sum()
-st.write("Total Counts by Class:")
-st.write(total_counts)
-average_confidences = data.groupby('class_name')['confidence'].mean()
-st.write("Average Confidence by Class:")
-st.write(average_confidences)
+col1, col2 = st.columns(2)
+with col1:
+    st.write("Total Counts by Class:")
+    total_counts = data.groupby('class_name')['animal_count'].sum()
+    st.write(total_counts)
+with col2:
+    st.write("Average Confidence by Class:")
+    average_confidences = data.groupby('class_name')['confidence'].mean()
+    st.write(average_confidences)
 
 # --- Ecological Metrics Plot ---
 st.subheader("Ecological Metrics Over Time")
