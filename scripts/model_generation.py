@@ -43,14 +43,35 @@ def load_model(model_name):
             # Download the model to a temporary file
             temp_model_path = "best.pt"
             try:
-                urllib.request.urlretrieve(url, temp_model_path)
-            except Exception as e:
-                logging.error(f"Error downloading model '{model_name}' from URL: {url}", exc_info=True)
-                raise Exception(f"Error downloading model '{model_name}' from URL: {e}")
+                # Download the model to a temporary file
+                temp_model_path = "best.pt"
+                try:
+                    urllib.request.urlretrieve(url, temp_model_path)
+                except Exception as e:
+                    logging.error(f"Error downloading model '{model_name}' from URL: {url}", exc_info=True)
+                    raise Exception(f"Error downloading model '{model_name}' from URL: {e}")
 
-            if not temp_model_path.endswith(".pt"):
-                os.remove(temp_model_path)
-                raise ValueError(f"Downloaded model file is not a valid PyTorch model (.pt): {temp_model_path}")
+                if not temp_model_path.endswith(".pt"):
+                    os.remove(temp_model_path)
+                    raise ValueError(f"Downloaded model file is not a valid PyTorch model (.pt): {temp_model_path}")
+
+                # Get the file size
+                file_size = os.path.getsize(temp_model_path)
+                logging.info(f"Downloaded model '{model_name}' with file size: {file_size} bytes")
+
+                # Check if the file size is reasonable (adjust the threshold as needed)
+                if file_size < 1000000:  # 1MB
+                    logging.warning(f"Downloaded model '{model_name}' is smaller than expected. Redownloading...")
+                    os.remove(temp_model_path)
+                    urllib.request.urlretrieve(url, temp_model_path)
+                    file_size = os.path.getsize(temp_model_path)
+                    if file_size < 1000000:
+                        logging.error(f"Downloaded model '{model_name}' is still smaller than expected. Aborting.")
+                        raise Exception(f"Downloaded model '{model_name}' is corrupted.")
+
+            except Exception as e:
+                logging.error(f"Error loading model '{model_name}': {e}", exc_info=True)
+                raise Exception(f"Error loading model '{model_name}': {e}")
 
             model = YOLO(temp_model_path)  # Load from temp file
             logging.info(f"Model '{model_name}' loaded from URL: {url}")
@@ -72,8 +93,6 @@ def generate_predictions(img_array, model_name="SHR_DSCAM", conf_thres=0.25, iou
 
     try:
         logging.info(f"Running YOLO inference on image")
-        # Resize the image using cv2.INTER_CUBIC interpolation
-        img_array = cv2.resize(img_array, (1024, 1024), interpolation=cv2.INTER_CUBIC)
         # Convert the image array to a PIL Image
         img_pil = Image.fromarray(img_array)
         results = model(img_pil, imgsz=1024, conf=conf_thres, iou=iou_thres)  # Run inference with thresholds and image size

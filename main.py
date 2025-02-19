@@ -120,6 +120,7 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
         img_cv = cv2.resize(img_cv, (1024, 1024), interpolation=cv2.INTER_CUBIC)
         img_pil = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
         img_width, img_height = img_pil.size
+        resized_img_array = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
 
         # Extract timestamp from filename
         image_name = os.path.basename(image_url)
@@ -131,7 +132,7 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
 
         # Generate predictions for the most recent image
         if model_to_use:
-            predictions = generate_predictions(img_array, model_to_use, conf_thres, iou_thres)
+            predictions = generate_predictions(resized_img_array, model_to_use, conf_thres, iou_thres)
 
             # Overlay predictions on the image
             for prediction in predictions:
