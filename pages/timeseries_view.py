@@ -583,17 +583,35 @@ fig_change = go.Figure()
 fig_change.add_trace(go.Scatter(x=total_annotations.index, y=total_annotations, 
                                mode='lines', name='Total Annotations'))
 
-# Convert dates to strings for vertical lines
-dates_list = [str(total_annotations.index[cp]) for cp in change_points[:-1]]
-for date in dates_list:
-    fig_change.add_vline(
-        x=date,
-        line_dash="dash",
-        annotation_text="Change Point",
-        annotation_position="top right"
+# Add vertical lines as shapes instead of using add_vline
+for cp in change_points[:-1]:
+    cp_date = total_annotations.index[cp]
+    fig_change.add_shape(
+        type="line",
+        x0=cp_date,
+        x1=cp_date,
+        y0=0,
+        y1=1,
+        yref="paper",
+        line=dict(color="red", width=2, dash="dash"),
+    )
+    # Add annotation
+    fig_change.add_annotation(
+        x=cp_date,
+        y=1,
+        text="Change Point",
+        showarrow=True,
+        arrowhead=1,
+        yref="paper",
+        ax=0,
+        ay=-40
     )
 
-fig_change.update_layout(title="Change Points in Community Composition")
+fig_change.update_layout(
+    title="Change Points in Community Composition",
+    xaxis_title="Date",
+    yaxis_title="Total Annotations"
+)
 st.plotly_chart(fig_change)
 
 # Time-lag Analysis
