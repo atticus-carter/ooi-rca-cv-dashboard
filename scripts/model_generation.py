@@ -72,6 +72,8 @@ def generate_predictions(img_array, model_name="SHR_DSCAM", conf_thres=0.25, iou
 
     try:
         logging.info(f"Running YOLO inference on image")
+        # Resize the image using cv2.INTER_CUBIC interpolation
+        img_array = cv2.resize(img_array, (1024, 1024), interpolation=cv2.INTER_CUBIC)
         # Convert the image array to a PIL Image
         img_pil = Image.fromarray(img_array)
         results = model(img_pil, imgsz=1024, conf=conf_thres, iou=iou_thres)  # Run inference with thresholds and image size

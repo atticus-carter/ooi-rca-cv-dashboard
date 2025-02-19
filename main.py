@@ -3,7 +3,7 @@ import glob
 import pandas as pd
 import duckdb
 import streamlit as st
-from scripts.model_generation import generate_predictions, model_urls, load_model
+from .scripts.model_generation import generate_predictions, model_urls, load_model  # Added . to specify relative path
 import re
 import time  # Import the time module
 import yaml  # Import the YAML module
