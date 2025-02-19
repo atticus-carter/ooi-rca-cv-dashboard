@@ -57,15 +57,18 @@ granularity = st.selectbox("Select Granularity", ["Hourly", "Daily", "Monthly"])
 if granularity == "Hourly":
     data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
     data.set_index('timestamp', inplace=True)
-    data = data.resample('H').mean().reset_index()
+    numeric_data = data.select_dtypes(include=['number'])  # Select only numeric columns
+    data = numeric_data.resample('H').mean().reset_index()
 elif granularity == "Daily":
     data['timestamp'] = pd.to_datetime(data['date'])
     data.set_index('timestamp', inplace=True)
-    data = data.resample('D').mean().reset_index()
+    numeric_data = data.select_dtypes(include=['number'])  # Select only numeric columns
+    data = numeric_data.resample('D').mean().reset_index()
 elif granularity == "Monthly":
     data['timestamp'] = pd.to_datetime(data['date'])
     data.set_index('timestamp', inplace=True)
-    data = data.resample('M').mean().reset_index()
+    numeric_data = data.select_dtypes(include=['number'])  # Select only numeric columns
+    data = numeric_data.resample('M').mean().reset_index()
 
 # --- Plotting Options ---
 plot_type = st.selectbox("Select Plot Type", ["Stacked Bar Chart", "Stacked Area Chart", "Average Confidence"])
