@@ -234,3 +234,41 @@ try:
     st.plotly_chart(fig_heatmap)
 except Exception as e:
     st.error(f"Error generating correlation heatmap: {e}")
+
+# --- Per Species ARIMA Forecasting ---
+st.subheader("Per Species ARIMA Forecasting")
+from statsmodels.tsa.arima.model import ARIMA  # Ensure ARIMA is imported
+
+unique_species = data['class_name'].unique()
+for species in unique_species:
+    try:
+        # Group by date for the species and sum animal counts
+        df_species = data[data['class_name'] == species].copy()
+        df_species['date'] = pd.to_datetime(df_species['timestamp']).dt.date
+        ts_species = df_species.groupby('date')['animal_count'].sum().dropna()
+        if len(ts_species) < 10:
+            st.write(f"Not enough data for ARIMA forecast for species: {species}")
+            continue
+        model_arima_species = ARIMA(ts_species, order=(1,1,1)).fit()
+        forecast_species = model_arima_species.get_forecast(steps=10)
+        forecast_index_species = pd.date_range(pd.to_datetime(ts_species.index[-1]), periods=10, freq='D')
+        forecast_series_species = forecast_species.predicted_mean
+        conf_int_species = forecast_species.conf_int()
+        fig_species = go.Figure()
+        fig_species.add_trace(go.Scatter(x=ts_species.index, y=ts_species, mode='lines', name='Observed'))
+        fig_species.add_trace(go.Scatter(x=forecast_index_species, y=forecast_series_species, mode='lines', name='Forecast'))
+        fig_species.add_trace(go.Scatter(
+            x=forecast_index_species, y=conf_int_species.iloc[:, 0],
+            mode='lines', line=dict(color='gray'), name='Lower CI'))
+        fig_species.add_trace(go.Scatter(
+            x=forecast_index_species, y=conf_int_species.iloc[:, 1],
+            mode='lines', line=dict(color='gray'), name='Upper CI'))
+        fig_species.update_layout(
+            title=f"ARIMA Forecast for {species}",
+            xaxis_title="Date",
+            yaxis_title="Animal Count",
+            template='plotly_white'
+        )
+        st.plotly_chart(fig_species)
+    except Exception as e:
+        st.error(f"Error forecasting for species {species}: {e}")
