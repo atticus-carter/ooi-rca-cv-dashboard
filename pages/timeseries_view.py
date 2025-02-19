@@ -83,7 +83,7 @@ if schema_option == "Cluster":
     cluster_cols = [col for col in data.columns if "Cluster" in col]
     for col in cluster_cols:
         data[col] = pd.to_numeric(data[col], errors="coerce")
-    
+        
     # --- Plot Cluster Counts Over Time ---
     st.subheader("Cluster Counts Over Time")
     fig_cluster = go.Figure()
@@ -432,9 +432,13 @@ if st.button("Generate ARIMA Forecast for Selected Class"):
             fig_species.add_trace(go.Scatter(
                 x=forecast_index_species, y=conf_int_species.iloc[:, 1],
                 mode='lines', line=dict(color='gray'), name='Upper CI'))
-            fig_species.update_layout(title=f"ARIMA Forecast for {selected_arima_class}",
-                                      xaxis_title="Date", yaxis_title="Animal Count", template='plotly_white')
-            st.plotly_chart(fig_species)
+            fig_species.update_layout(
+                title=f"ARIMA Forecast for {selected_arima_class}",
+                xaxis_title="Date",
+                yaxis_title="Animal Count",
+                template='plotly_white'
+            )
+            st.plotly_chart(fig_species, key=f"arima_{selected_arima_class}")
     except Exception as e:
         st.error(f"Error forecasting for species {selected_arima_class}: {e}")
 
