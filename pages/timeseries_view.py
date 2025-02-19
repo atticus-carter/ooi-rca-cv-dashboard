@@ -6,6 +6,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 import statsmodels.api as sm
+from scipy.stats import f_oneway
+import pymannkendall as mk
 
 # --- Page Title ---
 st.title("Timeseries Data View")
@@ -718,6 +720,193 @@ fig_change.update_layout(
     yaxis_title="Total Annotations"
 )
 st.plotly_chart(fig_change)
+
+# Change Point Detection and Community Analysis
+st.subheader("Detailed Change Point Analysis")
+
+try:
+    # Detect change points using Ruptures
+    change_detector = Binseg(model="l2").fit(total_annotations.values.reshape(-1, 1))
+    change_points = change_detector.predict(n_bkps=3)
+    
+    # Create segments based on change points
+    segments = []
+    start_idx = 0
+    dates = total_annotations.index
+    
+    for cp in change_points[:-1]:
+        cp_date = dates[cp]
+        segment = {
+            'start_date': dates[start_idx],
+            'end_date': cp_date,
+            'data': species_pivot.iloc[start_idx:cp]
+        }
+        segments.append(segment)
+        start_idx = cp
+    
+    # Add the last segment
+    segments.append({
+        'start_date': dates[start_idx],
+        'end_date': dates[-1],
+        'data': species_pivot.iloc[start_idx:]
+    })
+    
+    # Analyze each segment
+    st.write("### Community Segments Analysis")
+    
+    for i, segment in enumerate(segments):
+        st.write(f"\n#### Segment {i+1}: {segment['start_date'].strftime('%Y-%m-%d')} to {segment['end_date'].strftime('%Y-%m-%d')}")
+        
+        # Calculate segment statistics
+        segment_data = segment['data']
+        total_observations = segment_data.sum().sum()
+        species_present = (segment_data.sum() > 0).sum()
+        dominant_species = segment_data.sum().idxmax()
+        
+        # Calculate diversity metrics for segment
+        shannon = -np.sum((segment_data.sum() / total_observations) * 
+                         np.log(segment_data.sum() / total_observations))
+        simpson = 1 - np.sum((segment_data.sum() * (segment_data.sum() - 1)) / 
+                            (total_observations * (total_observations - 1)))
+        
+        # Display basic statistics
+        st.write("**Basic Statistics:**")
+        st.write(f"- Duration: {len(segment_data)} days")
+        st.write(f"- Total observations: {total_observations}")
+        st.write(f"- Number of species: {species_present}")
+        st.write(f"- Dominant species: {dominant_species}")
+        st.write(f"- Shannon diversity: {shannon:.3f}")
+        st.write(f"- Simpson diversity: {simpson:.3f}")
+        
+        # Species composition
+        st.write("\n**Species Composition:**")
+        species_comp = segment_data.sum().sort_values(ascending=False)
+        species_percent = (species_comp / total_observations * 100).round(2)
+        
+        # Create composition DataFrame
+        comp_df = pd.DataFrame({
+            'Count': species_comp,
+            'Percentage': species_percent,
+            'Rank': range(1, len(species_comp) + 1)
+        })
+        st.dataframe(comp_df)
+        
+        # Visualize segment composition
+        fig_comp = px.pie(values=species_comp, names=species_comp.index,
+                         title=f"Species Composition - Segment {i+1}")
+        st.plotly_chart(fig_comp)
+        
+        # Statistical tests between adjacent segments
+        if i > 0:
+            prev_segment = segments[i-1]['data']
+            st.write("\n**Statistical Comparison with Previous Segment:**")
+            
+            # Perform PERMANOVA test
+            try:
+                from scipy.stats import f_oneway
+                
+                # Prepare data for PERMANOVA
+                segment1_data = prev_segment.values.flatten()
+                segment2_data = segment_data.values.flatten()
+                
+                # Perform F-test
+                f_stat, p_val = f_oneway(segment1_data, segment2_data)
+                st.write(f"PERMANOVA test: F-statistic = {f_stat:.3f}, p-value = {p_val:.3f}")
+                
+                # Interpretation
+                if p_val < 0.05:
+                    st.write("🔍 The communities are significantly different (p < 0.05)")
+                else:
+                    st.write("🔍 No significant difference between communities (p >= 0.05)")
+                
+                # Calculate and display community turnover
+                species_before = set(prev_segment.columns[prev_segment.sum() > 0])
+                species_after = set(segment_data.columns[segment_data.sum() > 0])
+                
+                appeared = species_after - species_before
+                disappeared = species_before - species_after
+                
+                st.write("\n**Community Turnover:**")
+                if len(appeared) > 0:
+                    st.write("Species appeared:", ', '.join(appeared))
+                if len(disappeared) > 0:
+                    st.write("Species disappeared:", ', '.join(disappeared))
+                
+                # Calculate similarity indices
+                jaccard = len(species_before & species_after) / len(species_before | species_after)
+                st.write(f"Jaccard similarity index: {jaccard:.3f}")
+                
+            except Exception as e:
+                st.error(f"Error performing statistical tests: {e}")
+        
+        # Trend analysis within segment
+        st.write("\n**Trend Analysis:**")
+        try:
+            # Mann-Kendall trend test
+            import pymannkendall as mk
+            segment_total = segment_data.sum(axis=1)
+            trend_result = mk.original_test(segment_total)
+            st.write(f"Mann-Kendall trend test: {trend_result.trend} (p-value: {trend_result.p:.3f})")
+            
+            # Plot trend
+            fig_trend = go.Figure()
+            fig_trend.add_trace(go.Scatter(
+                x=segment_data.index,
+                y=segment_total,
+                mode='lines+markers',
+                name='Observations'
+            ))
+            
+            # Add trend line
+            z = np.polyfit(range(len(segment_total)), segment_total, 1)
+            p = np.poly1d(z)
+            fig_trend.add_trace(go.Scatter(
+                x=segment_data.index,
+                y=p(range(len(segment_total))),
+                mode='lines',
+                name='Trend',
+                line=dict(dash='dash')
+            ))
+            
+            fig_trend.update_layout(
+                title=f"Temporal Trend - Segment {i+1}",
+                xaxis_title="Date",
+                yaxis_title="Total Observations"
+            )
+            st.plotly_chart(fig_trend)
+            
+        except Exception as e:
+            st.error(f"Error performing trend analysis: {e}")
+    
+    # Overall change point significance
+    st.write("### Overall Change Point Significance")
+    
+    # Calculate BIC scores for different numbers of change points
+    bic_scores = []
+    for n_bkps in range(1, 6):
+        score = change_detector.score(n_bkps=n_bkps)
+        bic_scores.append(score)
+    
+    # Plot BIC scores
+    fig_bic = go.Figure()
+    fig_bic.add_trace(go.Scatter(
+        x=list(range(1, 6)),
+        y=bic_scores,
+        mode='lines+markers'
+    ))
+    fig_bic.update_layout(
+        title="Model Selection - BIC Scores",
+        xaxis_title="Number of Change Points",
+        yaxis_title="BIC Score"
+    )
+    st.plotly_chart(fig_bic)
+    
+    # Recommend optimal number of change points
+    optimal_cp = np.argmin(bic_scores) + 1
+    st.write(f"Optimal number of change points (based on BIC): {optimal_cp}")
+
+except Exception as e:
+    st.error(f"Error performing detailed change point analysis: {e}")
 
 # Time-lag Analysis
 st.write("Time-lag Analysis")
