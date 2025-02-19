@@ -57,38 +57,50 @@ granularity = st.selectbox("Select Granularity", ["Hourly", "Daily", "Monthly"])
 if granularity == "Hourly":
     data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
     
-    # Group by timestamp and class_name, then calculate the mean of numeric columns
-    grouped_data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
-    grouped_data.set_index('timestamp', inplace=True)
+    # Separate class_name and numeric columns
+    class_name_data = data[['timestamp', 'class_name']]
+    numeric_data = data.select_dtypes(include=['number', 'datetime64'])
+    numeric_data['timestamp'] = data['timestamp']
+    numeric_data = numeric_data.set_index('timestamp')
+
+    # Resample the numeric data
+    resampled_numeric_data = numeric_data.resample('H').mean()
     
-    # Resample the grouped data
-    resampled_data = grouped_data.resample('H').mean().reset_index()
-    
-    data = resampled_data
+    # Merge the resampled numeric data with the class_name data
+    resampled_data = pd.merge(resampled_numeric_data, class_name_data, left_index=True, right_on='timestamp', how='left')
+    data = resampled_data.reset_index()
 
 elif granularity == "Daily":
     data['timestamp'] = pd.to_datetime(data['date'])
     
-    # Group by timestamp and class_name, then calculate the mean of numeric columns
-    grouped_data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
-    grouped_data.set_index('timestamp', inplace=True)
+    # Separate class_name and numeric columns
+    class_name_data = data[['timestamp', 'class_name']]
+    numeric_data = data.select_dtypes(include=['number', 'datetime64'])
+    numeric_data['timestamp'] = data['timestamp']
+    numeric_data = numeric_data.set_index('timestamp')
     
-    # Resample the grouped data
-    resampled_data = grouped_data.resample('D').mean().reset_index()
+    # Resample the numeric data
+    resampled_numeric_data = numeric_data.resample('D').mean()
     
-    data = resampled_data
+    # Merge the resampled numeric data with the class_name data
+    resampled_data = pd.merge(resampled_numeric_data, class_name_data, left_index=True, right_on='timestamp', how='left')
+    data = resampled_data.reset_index()
 
 elif granularity == "Monthly":
     data['timestamp'] = pd.to_datetime(data['date'])
     
-    # Group by timestamp and class_name, then calculate the mean of numeric columns
-    grouped_data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
-    grouped_data.set_index('timestamp', inplace=True)
+    # Separate class_name and numeric columns
+    class_name_data = data[['timestamp', 'class_name']]
+    numeric_data = data.select_dtypes(include=['number', 'datetime64'])
+    numeric_data['timestamp'] = data['timestamp']
+    numeric_data = numeric_data.set_index('timestamp')
     
-    # Resample the grouped data
-    resampled_data = grouped_data.resample('M').mean().reset_index()
+    # Resample the numeric data
+    resampled_numeric_data = numeric_data.resample('M').mean()
     
-    data = resampled_data
+    # Merge the resampled numeric data with the class_name data
+    resampled_data = pd.merge(resampled_numeric_data, class_name_data, left_index=True, right_on='timestamp', how='left')
+    data = resampled_data.reset_index()
 
 # --- Plotting Options ---
 plot_type = st.selectbox("Select Plot Type", ["Stacked Bar Chart", "Stacked Area Chart", "Average Confidence"])
