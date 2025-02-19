@@ -1,4 +1,7 @@
+import sys
 import os
+sys.path.insert(0, os.getcwd())
+
 import glob
 import pandas as pd
 import duckdb

@@ -11,8 +11,8 @@ from PIL import Image
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Model Management ---
-model_urls = {
-    "SHR_DSCAM": "https://huggingface.co/atticus-carter/SHR_DSCAM/raw/main/best.pt",
+model_urls = {"
+    "SHR_DSCAM": "https://huggingface.co/atticus-carter/SHR_DSCAM/resolve/main/best.pt?download=true",
     "Megalodon": "https://huggingface.co/FathomNet/megalodon/resolve/main/mbari-megalodon-yolov8x.pt?download=true",
     "315K": "https://huggingface.co/FathomNet/MBARI-315k-yolov8/resolve/main/mbari_315k_yolov8.pt?download=true"
     # Add other models here with their URLs
