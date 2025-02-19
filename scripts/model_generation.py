@@ -105,7 +105,7 @@ def generate_predictions(img_array, model_name="SHR_DSCAM", conf_thres=0.25, iou
             confs = result.boxes.conf  # confidence scores
             classes = result.boxes.cls.int() # class indices
 
-            for i in range(len(xywhn)):
+            for i, box in enumerate(boxes):
                 class_id = classes[i].item()
                 class_name = names[class_id]
                 confidence = confs[i].item()
