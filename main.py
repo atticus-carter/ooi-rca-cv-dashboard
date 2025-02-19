@@ -278,3 +278,7 @@ if st.button("Go to Data Analysis"):
 # --- Camera Map Page Link ---
 if st.button("View Camera Map"):
     st.switch_page("pages/camera_map.py")
+
+# --- Timeseries View Page Link ---
+if st.button("View Timeseries Data"):
+    st.switch_page("pages/timeseries_view.py")
