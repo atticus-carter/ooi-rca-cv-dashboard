@@ -185,3 +185,52 @@ fig_class.update_layout(
 )
 
 st.plotly_chart(fig_class)
+
+# --- Advanced Ecological Analysis ---
+
+st.subheader("Advanced Ecological Analysis")
+
+# Mann-Kendall Trend Test on Total Annotations (7-day Avg)
+try:
+    import pymannkendall as mk
+    result = mk.original_test(species_counts['total_annotations_7d_avg'].dropna())
+    st.write("Mann-Kendall Trend Test on Total Annotations (7d Avg):")
+    st.write(f"Trend: {result.trend}, p-value: {result.p}")
+except ImportError:
+    st.warning("pymannkendall library not installed. Skipping Mann-Kendall trend test.")
+
+# ARIMA Forecasting for Total Annotations (7-day Avg)
+try:
+    from statsmodels.tsa.arima.model import ARIMA
+    ts = species_counts['total_annotations_7d_avg'].dropna()
+    model_arima = ARIMA(ts, order=(1,1,1)).fit()
+    forecast = model_arima.get_forecast(steps=10)
+    forecast_index = pd.date_range(ts.index[-1], periods=10, freq='D')
+    forecast_series = forecast.predicted_mean
+    conf_int = forecast.conf_int()
+    fig_arima = go.Figure()
+    fig_arima.add_trace(go.Scatter(x=ts.index, y=ts, mode='lines', name='Observed'))
+    fig_arima.add_trace(go.Scatter(x=forecast_index, y=forecast_series, mode='lines', name='Forecast'))
+    fig_arima.add_trace(go.Scatter(
+        x=forecast_index, y=conf_int.iloc[:, 0],
+        mode='lines', line=dict(color='gray'), name='Lower CI'))
+    fig_arima.add_trace(go.Scatter(
+        x=forecast_index, y=conf_int.iloc[:, 1],
+        mode='lines', line=dict(color='gray'), name='Upper CI'))
+    fig_arima.update_layout(
+        title="ARIMA Forecast: Total Annotations (7d Avg)",
+        xaxis_title="Date",
+        yaxis_title="Total Annotations"
+    )
+    st.plotly_chart(fig_arima)
+except Exception as e:
+    st.error(f"Error performing ARIMA forecasting: {e}")
+
+# Correlation Heatmap for Ecological Metrics
+try:
+    metrics = species_counts[['total_annotations', 'species_richness', 'shannon_wiener']]
+    corr = metrics.corr()
+    fig_heatmap = px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', title="Correlation Heatmap")
+    st.plotly_chart(fig_heatmap)
+except Exception as e:
+    st.error(f"Error generating correlation heatmap: {e}")
