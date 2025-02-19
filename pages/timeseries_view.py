@@ -556,7 +556,10 @@ st.write("Wavelet Analysis")
 # Perform continuous wavelet transform on total annotations
 total_annotations = species_pivot.sum(axis=1)
 widths = np.arange(1, 31)  # Range of periods to analyze
-cwtmatr = signal.cwt(total_annotations, signal.ricker, widths)
+# Use continuous wavelet transform from scipy.signal
+wavelet = signal.morlet2  # Using Morlet wavelet instead of deprecated ricker
+frequencies = np.linspace(1, 10, 30)
+cwtmatr = signal.cwt(total_annotations.values, wavelet, widths)
 fig_wavelet = px.imshow(np.abs(cwtmatr), 
                        labels=dict(x="Time", y="Scale", color="Power"),
                        title="Wavelet Transform of Total Annotations")
