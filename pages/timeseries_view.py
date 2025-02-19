@@ -575,16 +575,24 @@ st.plotly_chart(fig_wavelet)
 
 # Change Point Detection
 st.write("Change Point Detection")
-from ruptures import Binseg  # You'll need to add 'ruptures' to requirements.txt
+from ruptures import Binseg
 # Detect change points in total annotations
 change_detector = Binseg(model="l2").fit(total_annotations.values.reshape(-1, 1))
 change_points = change_detector.predict(n_bkps=3)
 fig_change = go.Figure()
 fig_change.add_trace(go.Scatter(x=total_annotations.index, y=total_annotations, 
                                mode='lines', name='Total Annotations'))
-for cp in change_points[:-1]:  # Exclude last point
-    fig_change.add_vline(x=total_annotations.index[cp], line_dash="dash", 
-                        annotation_text="Change Point")
+
+# Convert dates to strings for vertical lines
+dates_list = [str(total_annotations.index[cp]) for cp in change_points[:-1]]
+for date in dates_list:
+    fig_change.add_vline(
+        x=date,
+        line_dash="dash",
+        annotation_text="Change Point",
+        annotation_position="top right"
+    )
+
 fig_change.update_layout(title="Change Points in Community Composition")
 st.plotly_chart(fig_change)
 
