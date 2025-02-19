@@ -10,3 +10,5 @@ plotly
 dill
 statsmodels
 pymannkendall
+sklearn
+scipy
