@@ -235,13 +235,14 @@ try:
     species_pivot = species_daily.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
     # Compute the correlation matrix among species.
     corr_species = species_pivot.corr()
-    # Plot the correlation heatmap.
+    # Plot the correlation heatmap with increased size.
     fig_species_corr = px.imshow(
         corr_species, 
         text_auto=True, 
         color_continuous_scale='RdBu_r', 
         title="Interspecies Occurrence Correlation Heatmap"
     )
+    fig_species_corr.update_layout(width=800, height=800)
     st.plotly_chart(fig_species_corr)
 except Exception as e:
     st.error(f"Error generating species correlation heatmap: {e}")
