@@ -146,32 +146,18 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
         # Generate predictions for the most recent image
         if model_to_use:
             predictions = generate_predictions(resized_img_array, model_to_use, conf_thres, iou_thres)
+            
+            # Load model again for plotting
+            model = load_model(model_to_use)
+            results = model(img_pil, imgsz=1024, conf=conf_thres, iou=iou_thres)
 
-            # Overlay predictions on the image
-            for prediction in predictions:
-                if len(prediction["bbox"]) < 4:
-                    logging.warning(f"Skipping prediction due to insufficient bbox elements: {prediction}")
-                    continue
+            # Visualize the results
+            for r in results:
+                im_bgr = r.plot()  # BGR-order numpy array
+                im_rgb = Image.fromarray(im_bgr[..., ::-1])  # RGB-order PIL image
+                return im_rgb, timestamp_str
 
-                class_name = prediction["class_name"]
-                confidence = prediction["confidence"]
-                bbox_x, bbox_y, bbox_width, bbox_height = prediction["bbox"][0], prediction["bbox"][1], prediction["bbox"][2], prediction["bbox"][3]
-
-                x1 = int((bbox_x - bbox_width / 2) * img_width)
-                y1 = int((bbox_y - bbox_height / 2) * img_height)
-                x2 = int((bbox_x + bbox_width / 2) * img_width)
-                y2 = int((bbox_y + bbox_height / 2) * img_height)
-
-                color = get_color_for_class(class_name)
-                cv2.rectangle(img_cv, (x1, y1), (x2, y2), color, 3)  # Thicker lines
-                
-                # Add a filled rectangle behind the text for better visibility
-                label = f"{class_name} {confidence:.2f}"
-                (label_width, label_height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)
-                cv2.rectangle(img_cv, (x1, y1 - label_height - 10), (x1 + label_width, y1), color, -1)
-                cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
-
-        return img_cv, timestamp_str
+        return img_pil, timestamp_str
 
     except Exception as e:
         st.error(f"Error processing image from URL {image_url}: {e}")
