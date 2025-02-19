@@ -226,14 +226,25 @@ try:
 except Exception as e:
     st.error(f"Error performing ARIMA forecasting: {e}")
 
-# Correlation Heatmap for Ecological Metrics
+# --- Interspecies Occurrence Correlation Heatmap ---
+st.subheader("Interspecies Occurrence Correlation Heatmap")
 try:
-    metrics = species_counts[['total_annotations', 'species_richness', 'shannon_wiener']]
-    corr = metrics.corr()
-    fig_heatmap = px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', title="Correlation Heatmap")
-    st.plotly_chart(fig_heatmap)
+    # Create a daily pivot table of animal counts for each species.
+    species_daily = data.copy()
+    species_daily['date'] = pd.to_datetime(species_daily['timestamp']).dt.date
+    species_pivot = species_daily.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
+    # Compute the correlation matrix among species.
+    corr_species = species_pivot.corr()
+    # Plot the correlation heatmap.
+    fig_species_corr = px.imshow(
+        corr_species, 
+        text_auto=True, 
+        color_continuous_scale='RdBu_r', 
+        title="Interspecies Occurrence Correlation Heatmap"
+    )
+    st.plotly_chart(fig_species_corr)
 except Exception as e:
-    st.error(f"Error generating correlation heatmap: {e}")
+    st.error(f"Error generating species correlation heatmap: {e}")
 
 # --- Per Species ARIMA Forecasting ---
 st.subheader("Per Species ARIMA Forecasting")
