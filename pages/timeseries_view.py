@@ -56,22 +56,48 @@ granularity = st.selectbox("Select Granularity", ["Hourly", "Daily", "Monthly"])
 
 if granularity == "Hourly":
     data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
-    data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
     data.set_index('timestamp', inplace=True)
-    numeric_data = data.select_dtypes(include=['number'])  # Select only numeric columns
-    data = numeric_data.resample('H').mean().reset_index()
+    
+    # Separate numeric and non-numeric columns
+    numeric_data = data.select_dtypes(include=['number'])
+    non_numeric_data = data.select_dtypes(exclude=['number'])
+    
+    # Resample numeric data and calculate the mean
+    resampled_numeric_data = numeric_data.resample('H').mean()
+    
+    # Merge the resampled numeric data with the non-numeric data
+    resampled_data = pd.merge(resampled_numeric_data, non_numeric_data.reset_index(), left_index=True, right_on='timestamp', how='left')
+    data = resampled_data.reset_index()
+
 elif granularity == "Daily":
     data['timestamp'] = pd.to_datetime(data['date'])
-    data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
     data.set_index('timestamp', inplace=True)
-    numeric_data = data.select_dtypes(include(['number']))  # Select only numeric columns
-    data = numeric_data.resample('D').mean().reset_index()
+    
+    # Separate numeric and non-numeric columns
+    numeric_data = data.select_dtypes(include(['number']))
+    non_numeric_data = data.select_dtypes(exclude(['number']))
+    
+    # Resample numeric data and calculate the mean
+    resampled_numeric_data = numeric_data.resample('D').mean()
+    
+    # Merge the resampled numeric data with the non-numeric data
+    resampled_data = pd.merge(resampled_numeric_data, non_numeric_data.reset_index(), left_index=True, right_on='timestamp', how='left')
+    data = resampled_data.reset_index()
+
 elif granularity == "Monthly":
     data['timestamp'] = pd.to_datetime(data['date'])
-    data = data.groupby(['timestamp', 'class_name']).mean().reset_index()
     data.set_index('timestamp', inplace=True)
-    numeric_data = data.select_dtypes(include(['number']))  # Select only numeric columns
-    data = numeric_data.resample('M').mean().reset_index()
+    
+    # Separate numeric and non-numeric columns
+    numeric_data = data.select_dtypes(include(['number']))
+    non_numeric_data = data.select_dtypes(exclude(['number']))
+    
+    # Resample numeric data and calculate the mean
+    resampled_numeric_data = numeric_data.resample('M').mean()
+    
+    # Merge the resampled numeric data with the non-numeric data
+    resampled_data = pd.merge(resampled_numeric_data, non_numeric_data.reset_index(), left_index=True, right_on='timestamp', how='left')
+    data = resampled_data.reset_index()
 
 # --- Plotting Options ---
 plot_type = st.selectbox("Select Plot Type", ["Stacked Bar Chart", "Stacked Area Chart", "Average Confidence"])
