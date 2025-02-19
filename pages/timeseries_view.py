@@ -468,3 +468,165 @@ if st.button("Generate ARIMA Forecast for Selected Class"):
 # The average annotations ARIMA forecast is still generated in the earlier ARIMA section.
 # The per-class ARIMA forecast is generated in the interactive section.
 # The ARIMA forecasts are generated for the next 10 days.
+
+# --- Additional Diversity Indices ---
+st.subheader("Additional Diversity Indices")
+
+# Calculate Simpson's Diversity Index
+def simpsons_diversity(counts):
+    N = sum(counts)
+    return 1 - sum((n/N) * ((n-1)/(N-1)) for n in counts if n > 0)
+
+# Calculate Pielou's Evenness
+def pielou_evenness(counts):
+    shannon = -sum((n/sum(counts)) * np.log(n/sum(counts)) for n in counts if n > 0)
+    return shannon / np.log(len([n for n in counts if n > 0]))
+
+# Calculate Chao1 Richness
+def chao1_richness(counts):
+    singletons = sum(1 for n in counts if n == 1)
+    doubletons = sum(1 for n in counts if n == 2)
+    observed_richness = len([n for n in counts if n > 0])
+    if doubletons == 0:
+        return observed_richness
+    return observed_richness + (singletons * singletons)/(2 * doubletons)
+
+# Create time series of diversity indices
+diversity_metrics = pd.DataFrame(index=species_pivot.index)
+diversity_metrics['simpsons'] = species_pivot.apply(simpsons_diversity, axis=1)
+diversity_metrics['pielou'] = species_pivot.apply(pielou_evenness, axis=1)
+diversity_metrics['chao1'] = species_pivot.apply(chao1_richness, axis=1)
+
+fig_div = go.Figure()
+for col in diversity_metrics.columns:
+    fig_div.add_trace(go.Scatter(x=diversity_metrics.index, y=diversity_metrics[col], 
+                                mode='lines', name=col.capitalize()))
+fig_div.update_layout(title="Diversity Indices Over Time", xaxis_title="Date", yaxis_title="Index Value")
+st.plotly_chart(fig_div)
+
+# --- Community Analysis ---
+st.subheader("Community Analysis")
+
+# Beta Diversity over time
+from scipy.spatial.distance import pdist
+beta_div = pdist(species_pivot, metric='braycurtis')
+beta_matrix = squareform(beta_div)
+fig_beta = px.imshow(beta_matrix, 
+                     labels=dict(x="Time Point", y="Time Point", color="Bray-Curtis Dissimilarity"),
+                     title="Beta Diversity (Bray-Curtis) Between Time Points")
+st.plotly_chart(fig_beta)
+
+# Species turnover rate
+def calculate_turnover(df):
+    turnover = []
+    for i in range(1, len(df)):
+        prev = set(df.iloc[i-1][df.iloc[i-1] > 0].index)
+        curr = set(df.iloc[i][df.iloc[i] > 0].index)
+        gain = len(curr - prev)
+        loss = len(prev - curr)
+        turnover.append((gain + loss) / 2)
+    return turnover
+
+turnover_rates = calculate_turnover(species_pivot)
+fig_turnover = go.Figure()
+fig_turnover.add_trace(go.Scatter(x=species_pivot.index[1:], y=turnover_rates, 
+                                 mode='lines', name='Turnover Rate'))
+fig_turnover.update_layout(title="Species Turnover Rate", 
+                          xaxis_title="Date", yaxis_title="Turnover Rate")
+st.plotly_chart(fig_turnover)
+
+# Rank-abundance curves
+st.subheader("Rank-Abundance Curves")
+# Calculate mean abundance for each species
+mean_abundances = species_pivot.mean().sort_values(ascending=False)
+fig_rank = go.Figure()
+fig_rank.add_trace(go.Scatter(x=list(range(1, len(mean_abundances) + 1)), 
+                             y=mean_abundances, mode='lines+markers'))
+fig_rank.update_layout(title="Rank-Abundance Curve",
+                      xaxis_title="Rank", yaxis_title="Mean Abundance (log scale)",
+                      yaxis_type="log")
+st.plotly_chart(fig_rank)
+
+# --- Temporal Patterns ---
+st.subheader("Temporal Patterns")
+
+# Wavelet Analysis
+from scipy import signal
+st.write("Wavelet Analysis")
+# Perform continuous wavelet transform on total annotations
+total_annotations = species_pivot.sum(axis=1)
+widths = np.arange(1, 31)  # Range of periods to analyze
+cwtmatr = signal.cwt(total_annotations, signal.ricker, widths)
+fig_wavelet = px.imshow(np.abs(cwtmatr), 
+                       labels=dict(x="Time", y="Scale", color="Power"),
+                       title="Wavelet Transform of Total Annotations")
+st.plotly_chart(fig_wavelet)
+
+# Change Point Detection
+st.write("Change Point Detection")
+from ruptures import Binseg  # You'll need to add 'ruptures' to requirements.txt
+# Detect change points in total annotations
+change_detector = Binseg(model="l2").fit(total_annotations.values.reshape(-1, 1))
+change_points = change_detector.predict(n_bkps=3)
+fig_change = go.Figure()
+fig_change.add_trace(go.Scatter(x=total_annotations.index, y=total_annotations, 
+                               mode='lines', name='Total Annotations'))
+for cp in change_points[:-1]:  # Exclude last point
+    fig_change.add_vline(x=total_annotations.index[cp], line_dash="dash", 
+                        annotation_text="Change Point")
+fig_change.update_layout(title="Change Points in Community Composition")
+st.plotly_chart(fig_change)
+
+# Time-lag Analysis
+st.write("Time-lag Analysis")
+# Calculate community dissimilarity at different time lags
+max_lag = 10
+lag_dissim = []
+for lag in range(1, max_lag + 1):
+    lagged_dist = np.mean([pdist([species_pivot.iloc[i], species_pivot.iloc[i+lag]], 
+                                'braycurtis')[0] 
+                          for i in range(len(species_pivot)-lag)])
+    lag_dissim.append(lagged_dist)
+
+fig_lag = go.Figure()
+fig_lag.add_trace(go.Scatter(x=list(range(1, max_lag + 1)), y=lag_dissim, 
+                            mode='lines+markers'))
+fig_lag.update_layout(title="Time-lag Analysis",
+                     xaxis_title="Time Lag (days)", 
+                     yaxis_title="Mean Bray-Curtis Dissimilarity")
+st.plotly_chart(fig_lag)
+
+# Species Co-occurrence Network
+st.write("Species Co-occurrence Network")
+import networkx as nx
+# Calculate species correlations
+species_corr = species_pivot.corr()
+# Create network from significant correlations
+G = nx.Graph()
+for i in range(len(species_corr)):
+    for j in range(i+1, len(species_corr)):
+        if abs(species_corr.iloc[i,j]) > 0.5:  # Correlation threshold
+            G.add_edge(species_corr.index[i], species_corr.index[j], 
+                      weight=species_corr.iloc[i,j])
+
+# Convert network to plotly figure
+pos = nx.spring_layout(G)
+edge_x = []
+edge_y = []
+for edge in G.edges():
+    x0, y0 = pos[edge[0]]
+    x1, y1 = pos[edge[1]]
+    edge_x.extend([x0, x1, None])
+    edge_y.extend([y0, y1, None])
+
+node_x = [pos[node][0] for node in G.nodes()]
+node_y = [pos[node][1] for node in G.nodes()]
+
+fig_network = go.Figure()
+fig_network.add_trace(go.Scatter(x=edge_x, y=edge_y, mode='lines',
+                                line=dict(width=0.5), hoverinfo='none'))
+fig_network.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text',
+                                text=list(G.nodes()), textposition="top center"))
+fig_network.update_layout(title="Species Co-occurrence Network",
+                         showlegend=False)
+st.plotly_chart(fig_network)
