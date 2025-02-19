@@ -67,7 +67,16 @@ plot_type = st.selectbox("Select Plot Type", ["Stacked Bar Chart", "Stacked Area
 if plot_type == "Stacked Bar Chart":
     fig = px.bar(data, x='timestamp', y='animal_count', color='class_name', title="Stacked Bar Chart")
 elif plot_type == "Stacked Area Chart":
-    fig = px.area(data, x='timestamp', y='animal_count', color='class_name', title="Stacked Area Chart")
+    # Aggregate counts by timestamp and class
+    df_area = data.groupby(['timestamp', 'class_name'])['animal_count'].sum().reset_index()
+    # Pivot to have timestamps as index and class_names as columns
+    pivot = df_area.pivot(index='timestamp', columns='class_name', values='animal_count').fillna(0)
+    # Convert raw counts to percentages per timestamp row
+    pivot_percent = pivot.div(pivot.sum(axis=1), axis=0) * 100
+    pivot_percent = pivot_percent.reset_index()
+    # Melt back to long format for Plotly Express
+    df_melted = pivot_percent.melt(id_vars='timestamp', var_name='class_name', value_name='percentage')
+    fig = px.area(df_melted, x='timestamp', y='percentage', color='class_name', title="Stacked Area Chart (Percentage)")
 elif plot_type == "Average Confidence":
     fig = px.line(data, x='timestamp', y='confidence', color='class_name', title="Average Confidence Over Time")
 st.plotly_chart(fig)
