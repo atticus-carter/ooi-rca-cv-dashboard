@@ -62,7 +62,45 @@ if not dfs:
 
 data = pd.concat(dfs)
 
-# --- Class Filtering ---
+# --- CSV Schema Detection and Processing ---
+if any("Cluster" in col for col in data.columns):
+    schema_option = st.radio("Select CSV Schema", options=["Standard", "Cluster"], index=0)
+else:
+    schema_option = "Standard"
+
+if schema_option == "Cluster":
+    # Process cluster CSV: extract datetime from "File" column; assume filename pattern has YYYYMMDDTHHMMSS.
+    import re
+    def extract_datetime(filename):
+        m = re.search(r'(\d{8}T\d{6})', filename)
+        if m:
+            return pd.to_datetime(m.group(1), format="%Y%m%dT%H%M%S")
+        else:
+            return pd.NaT
+    data["timestamp"] = data["File"].apply(extract_datetime)
+    data = data.dropna(subset=["timestamp"])
+    # Convert any column that contains "Cluster" in its header to numeric.
+    cluster_cols = [col for col in data.columns if "Cluster" in col]
+    for col in cluster_cols:
+        data[col] = pd.to_numeric(data[col], errors="coerce")
+else:
+    # Standard schema: create timestamp from 'date' (and 'time' if present)
+    if 'time' in data.columns:
+        data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
+    else:
+        data['timestamp'] = pd.to_datetime(data['date'])
+    data.sort_values('timestamp', inplace=True)
+
+# --- If Cluster schema is active, graph cluster counts over time ---
+if schema_option == "Cluster":
+    st.subheader("Cluster Counts Over Time")
+    fig_cluster = go.Figure()
+    for col in cluster_cols:
+        fig_cluster.add_trace(go.Scatter(x=data["timestamp"], y=data[col], mode="lines+markers", name=col))
+    fig_cluster.update_layout(title="Clusters Over Time", xaxis_title="Time", yaxis_title="Count")
+    st.plotly_chart(fig_cluster)
+
+# --- Process Cluster CSV Schema if detected ---
 unique_classes = data['class_name'].unique().tolist()
 selected_classes = st.multiselect("Select Classes", unique_classes, default=unique_classes)
 if selected_classes:
