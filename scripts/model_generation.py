@@ -99,21 +99,21 @@ def generate_predictions(img_array, model_name="SHR_DSCAM", conf_thres=0.25, iou
 
         predictions = []
         for result in results:
-            boxes = result.boxes # Get boxes from the result
+            boxes = result.boxes  # Get boxes from the result
             xywhn = result.boxes.xywhn  # normalized xywh
             names = result.names  # class names
             confs = result.boxes.conf  # confidence scores
-            classes = result.boxes.cls.int() # class indices
+            classes = result.boxes.cls.int()  # class indices
 
             for i, box in enumerate(boxes):
-                class_id = classes[i].item()
+                class_id = int(box.cls[0].item())  # Extract class ID from the box
                 class_name = names[class_id]
                 confidence = confs[i].item()
-                bbox = xywhn[i].tolist() # Normalized xywh (center x, center y, width, height)
+                bbox = xywhn[i].tolist()  # Normalized xywh (center x, center y, width, height)
                 predictions.append({
                     "class_id": class_id,
                     "class_name": class_name,
-                    "bbox": bbox, # normalized
+                    "bbox": bbox,  # normalized
                     "confidence": confidence,
                 })
         logging.info(f"Generated {len(predictions)} predictions for image")
