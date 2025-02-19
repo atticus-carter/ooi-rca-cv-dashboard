@@ -3,6 +3,9 @@ import pandas as pd
 import os
 import glob
 import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
+import statsmodels.api as sm
 
 # --- Page Title ---
 st.title("Timeseries Data View")
@@ -54,53 +57,33 @@ data = data[data['confidence'] >= conf_threshold]
 # --- Granularity Selection ---
 granularity = st.selectbox("Select Granularity", ["Hourly", "Daily", "Monthly"])
 
-if granularity == "Hourly":
-    data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
+def process_granularity(data, granularity):
+    if granularity == "Hourly":
+        data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
+        resample_rule = 'H'
+    elif granularity == "Daily":
+        data['timestamp'] = pd.to_datetime(data['date'])
+        resample_rule = 'D'
+    elif granularity == "Monthly":
+        data['timestamp'] = pd.to_datetime(data['date'])
+        resample_rule = 'M'
+    else:
+        return data
     
     # Separate class_name and numeric columns
-    class_name_data = data[['timestamp', 'class_name']]
+    class_name_data = data[['timestamp', 'class_name']].drop_duplicates(subset=['timestamp'])
     numeric_data = data.select_dtypes(include=['number', 'datetime64'])
-    numeric_data['timestamp'] = data['timestamp']
     numeric_data = numeric_data.set_index('timestamp')
 
     # Resample the numeric data
-    resampled_numeric_data = numeric_data.resample('H').mean()
+    resampled_numeric_data = numeric_data.resample(resample_rule).mean()
     
     # Merge the resampled numeric data with the class_name data
     resampled_data = pd.merge(resampled_numeric_data, class_name_data, left_index=True, right_on='timestamp', how='left')
-    data = resampled_data.reset_index()
+    
+    return resampled_data.reset_index()
 
-elif granularity == "Daily":
-    data['timestamp'] = pd.to_datetime(data['date'])
-    
-    # Separate class_name and numeric columns
-    class_name_data = data[['timestamp', 'class_name']]
-    numeric_data = data.select_dtypes(include=['number', 'datetime64'])
-    numeric_data['timestamp'] = data['timestamp']
-    numeric_data = numeric_data.set_index('timestamp')
-    
-    # Resample the numeric data
-    resampled_numeric_data = numeric_data.resample('D').mean()
-    
-    # Merge the resampled numeric data with the class_name data
-    resampled_data = pd.merge(resampled_numeric_data, class_name_data, left_index=True, right_on='timestamp', how='left')
-    data = resampled_data.reset_index()
-
-elif granularity == "Monthly":
-    data['timestamp'] = pd.to_datetime(data['date'])
-    
-    # Separate class_name and numeric columns
-    class_name_data = data[['timestamp', 'class_name']]
-    numeric_data = data.select_dtypes(include=['number', 'datetime64'])
-    numeric_data['timestamp'] = data['timestamp']
-    numeric_data = numeric_data.set_index('timestamp')
-    
-    # Resample the numeric data
-    resampled_numeric_data = numeric_data.resample('M').mean()
-    
-    # Merge the resampled numeric data with the class_name data
-    resampled_data = pd.merge(resampled_numeric_data, class_name_data, left_index=True, right_on='timestamp', how='left')
-    data = resampled_data.reset_index()
+data = process_granularity(data, granularity)
 
 # --- Plotting Options ---
 plot_type = st.selectbox("Select Plot Type", ["Stacked Bar Chart", "Stacked Area Chart", "Average Confidence"])
@@ -123,3 +106,83 @@ st.write(total_counts)
 average_confidences = data.groupby('class_name')['confidence'].mean()
 st.write("Average Confidence by Class:")
 st.write(average_confidences)
+
+# --- Ecological Metrics Plot ---
+st.subheader("Ecological Metrics Over Time")
+
+# Aggregate species prediction counts by date
+df = data.copy()
+df['date'] = pd.to_datetime(df['timestamp']).dt.date
+species_columns = ['animal_count']  # Column containing species counts
+species_counts = df.groupby('date')[species_columns].sum()
+
+# Calculate total annotations, species richness, and Shannon-Wiener index
+species_counts['total_annotations'] = species_counts.sum(axis=1)
+species_counts['species_richness'] = (species_counts[species_columns] > 0).sum(axis=1)
+species_proportions = species_counts[species_columns].div(species_counts['total_annotations'], axis=0)
+species_counts['shannon_wiener'] = - (species_proportions * np.log(species_proportions)).sum(axis=1)
+
+# Apply 7-day rolling average to total annotations, species richness, and Shannon-Wiener index
+species_counts['total_annotations_7d_avg'] = species_counts['total_annotations'].rolling(window=7).mean()
+species_counts['species_richness_7d_avg'] = species_counts['species_richness'].rolling(window=7).mean()
+species_counts['shannon_wiener_7d_avg'] = species_counts['shannon_wiener'].rolling(window=7).mean()
+
+# Create a line chart
+fig = go.Figure()
+
+fig.add_trace(
+    go.Scatter(
+        x=species_counts.index,
+        y=species_counts['total_annotations_7d_avg'],
+        mode='lines',
+        name='Total Annotations (7-day Avg)'
+    )
+)
+
+fig.add_trace(
+    go.Scatter(
+        x=species_counts.index,
+        y=species_counts['species_richness_7d_avg'],
+        mode='lines',
+        name='Species Richness (7-day Avg)'
+    )
+)
+
+fig.add_trace(
+    go.Scatter(
+        x=species_counts.index,
+        y=species_counts['shannon_wiener_7d_avg'],
+        mode='lines',
+        name='Shannon-Wiener Index (7-day Avg)'
+    )
+)
+
+# Customize the layout
+fig.update_layout(
+    title='Total Annotations, Species Richness, and Shannon-Wiener Index Over Time',
+    xaxis_title='Date',
+    yaxis_title='Value',
+    legend_title='Metrics',
+    template='plotly_white'
+)
+
+# Show the figure
+st.plotly_chart(fig)
+
+# Fit a statistical model to the data
+# Prepare the data for modeling
+X = species_counts[['total_annotations_7d_avg', 'species_richness_7d_avg']].dropna()
+y = species_counts['shannon_wiener_7d_avg'].dropna()
+
+# Ensure that X and y have the same index after dropping NaN values
+X, y = X.align(y, join='inner', axis=0)
+
+# Add a constant to the predictor variables (for intercept)
+X = sm.add_constant(X)
+
+# Fit an Ordinary Least Squares (OLS) model
+model = sm.OLS(y, X).fit()
+
+# Print the model summary
+st.write("Statistical Model Summary:")
+st.write(model.summary())
