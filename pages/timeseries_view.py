@@ -14,6 +14,9 @@ st.title("Timeseries Data View")
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
 selected_camera = st.selectbox("Select Camera", camera_names)
 
+# --- File Upload ---
+uploaded_files = st.file_uploader("Upload CSV Files", type=["csv"], accept_multiple_files=True)
+
 # --- List Available CSV Files ---
 base_dir = os.path.join("timeseries", selected_camera)
 st.write(f"Searching for CSV files in: {base_dir}")
@@ -23,23 +26,39 @@ st.write(f"Found CSV files: {csv_files}")
 
 csv_files = [os.path.relpath(f, base_dir) for f in csv_files]
 
-if not csv_files:
-    st.warning("No CSV files found for the selected camera.")
+if not csv_files and not uploaded_files:
+    st.warning("No CSV files found for the selected camera and no files uploaded.")
     st.stop()
 
 selected_csvs = st.multiselect("Select CSV Files", csv_files)
 
-if not selected_csvs:
-    st.warning("Please select at least one CSV file.")
+if not selected_csvs and not uploaded_files:
+    st.warning("Please select at least one CSV file or upload files.")
     st.stop()
 
 # --- Load and Concatenate Selected CSV Files ---
 dfs = []
+
+# Load data from selected CSV files
 for csv_file in selected_csvs:
     file_path = os.path.join(base_dir, csv_file)
     df = pd.read_csv(file_path)
     df['source_file'] = csv_file
     dfs.append(df)
+
+# Load data from uploaded files
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        try:
+            df = pd.read_csv(uploaded_file)
+            df['source_file'] = uploaded_file.name  # Use filename as source
+            dfs.append(df)
+        except Exception as e:
+            st.error(f"Error reading file {uploaded_file.name}: {e}")
+
+if not dfs:
+    st.warning("No data loaded. Please select CSV files or upload them.")
+    st.stop()
 
 data = pd.concat(dfs)
 
@@ -138,3 +157,27 @@ else:
     model = sm.OLS(y, X).fit()
     st.write("Statistical Model Summary:")
     st.write(model.summary())
+
+# --- Per Class Graphs ---
+st.subheader("Per Class Graphs")
+
+unique_classes = data['class_name'].unique()
+num_classes = len(unique_classes)
+
+# Create subplots
+fig_class = go.Figure()
+
+# Add traces for each class
+for i, class_name in enumerate(unique_classes):
+    class_data = data[data['class_name'] == class_name]
+    fig_class.add_trace(go.Scatter(x=class_data['timestamp'], y=class_data['animal_count'], mode='lines', name=class_name))
+
+# Update layout
+fig_class.update_layout(
+    title="Animal Counts Over Time by Class",
+    xaxis_title="Time",
+    yaxis_title="Animal Count",
+    template='plotly_white'
+)
+
+st.plotly_chart(fig_class)
