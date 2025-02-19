@@ -183,18 +183,27 @@ df_ecol = data.copy()
 df_ecol['date'] = pd.to_datetime(df_ecol['timestamp']).dt.date
 species_pivot = df_ecol.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
 
-# Calculate total annotations and derivative metrics
-species_counts = pd.DataFrame(index=species_pivot.index)
-species_counts['total_annotations'] = species_pivot.sum(axis=1)
-species_counts['species_richness'] = (species_pivot > 0).sum(axis=1)
+# Calculate diversity metrics for each date
+diversity_metrics = pd.DataFrame(index=species_pivot.index)
+diversity_metrics['Total_Annotations'] = species_pivot.sum(axis=1)
+diversity_metrics['Species_Richness'] = (species_pivot > 0).sum(axis=1)
 
-# Calculate all diversity metrics
+# Calculate additional diversity metrics
 def calculate_diversity_metrics(row):
     counts = row[row > 0]  # Only consider non-zero counts
     total = counts.sum()
+    if total == 0:
+        return pd.Series({
+            'Shannon_Wiener': 0,
+            'Simpson': 0,
+            'Pielou': 0,
+            'Chao1': 0,
+            'Berger_Parker': 0,
+            'Hill_N1': 0
+        })
     
     # Species richness
-    richness = len(counts[counts > 0])
+    richness = len(counts)
     
     # Shannon-Wiener Index
     proportions = counts / total
@@ -212,13 +221,12 @@ def calculate_diversity_metrics(row):
     chao1 = richness + ((singletons * singletons) / (2 * doubletons)) if doubletons > 0 else richness
     
     # Berger-Parker Dominance
-    berger_parker = counts.max() / total if total > 0 else 0
+    berger_parker = counts.max() / total
     
     # Hill Numbers (q=1)
     hill_1 = np.exp(shannon)
     
     return pd.Series({
-        'Species_Richness': richness,
         'Shannon_Wiener': shannon,
         'Simpson': simpson,
         'Pielou': pielou,
@@ -227,24 +235,21 @@ def calculate_diversity_metrics(row):
         'Hill_N1': hill_1
     })
 
-# Calculate metrics for each date
-diversity_metrics = species_pivot.apply(calculate_diversity_metrics, axis=1)
+# Calculate additional metrics
+additional_metrics = species_pivot.apply(calculate_diversity_metrics, axis=1)
+diversity_metrics = pd.concat([diversity_metrics, additional_metrics], axis=1)
 
 # Add rolling averages
 window_size = 7
 for col in diversity_metrics.columns:
-    species_counts[f'{col}_7d_avg'] = diversity_metrics[col].rolling(window=window_size).mean()
-    
-# Add rolling average for total annotations
-species_counts['total_annotations_7d_avg'] = species_counts['total_annotations'].rolling(window=7).mean()
-species_counts['species_richness_7d_avg'] = species_counts['species_richness'].rolling(window=7).mean()
+    diversity_metrics[f'{col}_7d'] = diversity_metrics[col].rolling(window=window_size).mean()
 
 # Let user select which metrics to display
-st.write("Select metrics to display:")
 available_metrics = [
     'Species_Richness', 'Shannon_Wiener', 'Simpson', 'Pielou', 
-    'Chao1', 'Berger_Parker', 'Hill_N1'
+    'Chao1', 'Berger_Parker', 'Hill_N1', 'Total_Annotations'
 ]
+
 selected_metrics = st.multiselect(
     "Choose diversity metrics to plot",
     available_metrics,
@@ -255,11 +260,20 @@ selected_metrics = st.multiselect(
 if selected_metrics:
     fig_ecol = go.Figure()
     for metric in selected_metrics:
+        # Plot both raw and smoothed data
         fig_ecol.add_trace(go.Scatter(
             x=diversity_metrics.index,
-            y=diversity_metrics[f'{metric}_7d_avg'],
+            y=diversity_metrics[metric],
             mode='lines',
-            name=f'{metric} (7-day Avg)'
+            name=f'{metric} (Raw)',
+            line=dict(width=1)
+        ))
+        fig_ecol.add_trace(go.Scatter(
+            x=diversity_metrics.index,
+            y=diversity_metrics[f'{metric}_7d'],
+            mode='lines',
+            name=f'{metric} (7-day Avg)',
+            line=dict(width=2)
         ))
     
     fig_ecol.update_layout(
@@ -267,7 +281,8 @@ if selected_metrics:
         xaxis_title='Date',
         yaxis_title='Metric Value',
         legend_title='Metrics',
-        template='plotly_white'
+        template='plotly_white',
+        showlegend=True
     )
     st.plotly_chart(fig_ecol)
 
@@ -281,6 +296,7 @@ if selected_metrics:
     - **Chao1**: Estimated true species richness including unobserved species
     - **Berger-Parker Dominance**: Relative abundance of the most abundant species
     - **Hill Number (N1)**: Effective number of species based on Shannon entropy
+    - **Total Annotations**: Total number of annotations across all species
     """)
 
 # --- ARIMA Forecasting for Total Annotations (7-day Avg) ---
