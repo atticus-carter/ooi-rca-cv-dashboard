@@ -127,35 +127,16 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
             img_cv = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             if img_cv is None:
                 st.warning(f"Could not decode image from URL: {image_url}")
-                return None
+                return None, None
 
         # Resize the image using bicubic interpolation
         img_cv = cv2.resize(img_cv, (1024, 1024), interpolation=cv2.INTER_CUBIC)
         img_pil = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
-        img_width, img_height = img_pil.size
-        resized_img_array = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
-
+        
         # Extract timestamp from filename
         image_name = os.path.basename(image_url)
         timestamp = extract_timestamp_from_filename(image_name)
         timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if timestamp else "Timestamp N/A"
-
-        # Determine the model to use
-        model_to_use = selected_model if selected_model != 'None' else None
-
-        # Generate predictions for the most recent image
-        if model_to_use:
-            predictions = generate_predictions(resized_img_array, model_to_use, conf_thres, iou_thres)
-            
-            # Load model again for plotting
-            model = load_model(model_to_use)
-            results = model(img_pil, imgsz=1024, conf=conf_thres, iou=iou_thres)
-
-            # Visualize the results
-            for r in results:
-                im_bgr = r.plot()  # BGR-order numpy array
-                im_rgb = Image.fromarray(im_bgr[..., ::-1])  # RGB-order PIL image
-                return im_rgb, timestamp_str
 
         return img_pil, timestamp_str
 
@@ -182,78 +163,92 @@ for i in range(2):
     with cols[i]:
         camera_id = camera_names[i]
         st.subheader(f"{camera_id}")
+        
+        # Display initial image without predictions
+        if st.session_state.images[camera_id] is None:
+            img, timestamp = display_latest_image_with_predictions(camera_id)
+            st.session_state.images[camera_id] = img
+            st.session_state.timestamps[camera_id] = timestamp
+        
         st.text(f"{st.session_state.timestamps[camera_id]}" if st.session_state.timestamps[camera_id] else "Loading...")
+        
+        # Model selection dropdown
         available_models = list(model_urls.keys())
         selected_model = st.selectbox(
             f"Select Model for {camera_id}",
             options=['None'] + available_models,
             index=available_models.index(st.session_state.selected_models[camera_id]) + 1 if st.session_state.selected_models[camera_id] in available_models else 0,
-            key=f"model_{camera_id}",
-            on_change=lambda cam_id=camera_id: setattr(st.session_state, 'selected_models', {**st.session_state.selected_models, cam_id: st.session_state[f"model_{cam_id}"]})
+            key=f"model_{camera_id}"
         )
         
-        # Display initial image with default model predictions
-        if st.session_state.images[camera_id] is None:
-            st.session_state.images[camera_id], st.session_state.timestamps[camera_id] = display_latest_image_with_predictions(
-                camera_id,
-                default_models[camera_id],
-                conf_threshold,
-                iou_threshold
-            )
         if st.session_state.images[camera_id] is not None:
             st.image(st.session_state.images[camera_id], use_container_width=True)
 
+        # Generate predictions button
         if st.button(f"Generate Predictions", key=f"generate_{camera_id}"):
             with st.spinner('Generating predictions...'):
-                # Use the selected model from the dropdown
                 model_to_use = st.session_state[f"model_{camera_id}"] if st.session_state[f"model_{camera_id}"] != 'None' else None
-                st.session_state.images[camera_id], st.session_state.timestamps[camera_id] = display_latest_image_with_predictions(
-                    camera_id,
-                    model_to_use,
-                    conf_threshold,
-                    iou_threshold
-                )
-                if st.session_state.images[camera_id] is not None:
-                    st.image(st.session_state.images[camera_id], use_container_width=True)
+                if model_to_use:
+                    # Get the original image
+                    img_pil = st.session_state.images[camera_id]
+                    if img_pil is not None:
+                        # Generate predictions
+                        predictions = generate_predictions(np.array(img_pil), model_to_use, conf_threshold, iou_threshold)
+                        # Load model and generate visualization
+                        model = load_model(model_to_use)
+                        results = model(img_pil, imgsz=1024, conf=conf_threshold, iou=iou_threshold)
+                        # Update the image with predictions
+                        for r in results:
+                            im_bgr = r.plot()
+                            im_rgb = Image.fromarray(im_bgr[..., ::-1])
+                            st.session_state.images[camera_id] = im_rgb
+                            st.image(im_rgb, use_container_width=True)
 
 cols2 = st.columns(2)
 for i in range(2):
     with cols2[i]:
         camera_id = camera_names[i+2]
         st.subheader(f"{camera_id}")
+        
+        # Display initial image without predictions
+        if st.session_state.images[camera_id] is None:
+            img, timestamp = display_latest_image_with_predictions(camera_id)
+            st.session_state.images[camera_id] = img
+            st.session_state.timestamps[camera_id] = timestamp
+        
         st.text(f"{st.session_state.timestamps[camera_id]}" if st.session_state.timestamps[camera_id] else "Loading...")
+        
+        # Model selection dropdown
         available_models = list(model_urls.keys())
         selected_model = st.selectbox(
             f"Select Model for {camera_id}",
             options=['None'] + available_models,
             index=available_models.index(st.session_state.selected_models[camera_id]) + 1 if st.session_state.selected_models[camera_id] in available_models else 0,
-            key=f"model_{camera_id}",
-            on_change=lambda cam_id=camera_id: setattr(st.session_state, 'selected_models', {**st.session_state.selected_models, cam_id: st.session_state[f"model_{cam_id}"]})
+            key=f"model_{camera_id}"
         )
         
-        # Display initial image with default model predictions
-        if st.session_state.images[camera_id] is None:
-            st.session_state.images[camera_id], st.session_state.timestamps[camera_id] = display_latest_image_with_predictions(
-                camera_id,
-                default_models[camera_id],
-                conf_threshold,
-                iou_threshold
-            )
         if st.session_state.images[camera_id] is not None:
             st.image(st.session_state.images[camera_id], use_container_width=True)
 
+        # Generate predictions button
         if st.button(f"Generate Predictions", key=f"generate_{camera_id}"):
             with st.spinner('Generating predictions...'):
-                # Use the selected model from the dropdown
                 model_to_use = st.session_state[f"model_{camera_id}"] if st.session_state[f"model_{camera_id}"] != 'None' else None
-                st.session_state.images[camera_id], st.session_state.timestamps[camera_id] = display_latest_image_with_predictions(
-                    camera_id,
-                    model_to_use,
-                    conf_threshold,
-                    iou_threshold
-                )
-                if st.session_state.images[camera_id] is not None:
-                    st.image(st.session_state.images[camera_id], use_container_width=True)
+                if model_to_use:
+                    # Get the original image
+                    img_pil = st.session_state.images[camera_id]
+                    if img_pil is not None:
+                        # Generate predictions
+                        predictions = generate_predictions(np.array(img_pil), model_to_use, conf_threshold, iou_threshold)
+                        # Load model and generate visualization
+                        model = load_model(model_to_use)
+                        results = model(img_pil, imgsz=1024, conf=conf_threshold, iou=iou_threshold)
+                        # Update the image with predictions
+                        for r in results:
+                            im_bgr = r.plot()
+                            im_rgb = Image.fromarray(im_bgr[..., ::-1])
+                            st.session_state.images[camera_id] = im_rgb
+                            st.image(im_rgb, use_container_width=True)
 
 # --- Dataview Button ---
 camera_option = st.selectbox("Select Camera for Detailed View", camera_names)  # Use camera_names list
