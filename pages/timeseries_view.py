@@ -178,36 +178,101 @@ with col2:
 # --- Ecological Metrics Plot ---
 st.subheader("Ecological Metrics Over Time")
 
-# Aggregate species prediction counts by date (using the date portion of timestamp)
+# Create pivot table for species counts
 df_ecol = data.copy()
 df_ecol['date'] = pd.to_datetime(df_ecol['timestamp']).dt.date
-species_columns = ['animal_count']
-species_counts = df_ecol.groupby('date')[species_columns].sum()
+species_pivot = df_ecol.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
 
-# Calculate ecological metrics
-species_counts['total_annotations'] = species_counts.sum(axis=1)
-species_counts['species_richness'] = (species_counts[species_columns] > 0).sum(axis=1)
-species_proportions = species_counts[species_columns].div(species_counts['total_annotations'], axis=0)
-species_counts['shannon_wiener'] = - (species_proportions * np.log(species_proportions)).sum(axis=1)
+# Calculate all diversity metrics
+def calculate_diversity_metrics(row):
+    counts = row[row > 0]  # Only consider non-zero counts
+    total = counts.sum()
+    
+    # Species richness
+    richness = len(counts[counts > 0])
+    
+    # Shannon-Wiener Index
+    proportions = counts / total
+    shannon = -np.sum(proportions * np.log(proportions))
+    
+    # Simpson's Index
+    simpson = 1 - np.sum((counts * (counts - 1)) / (total * (total - 1)))
+    
+    # Pielou's Evenness
+    pielou = shannon / np.log(richness) if richness > 1 else 0
+    
+    # Chao1 Richness
+    singletons = len(counts[counts == 1])
+    doubletons = len(counts[counts == 2])
+    chao1 = richness + ((singletons * singletons) / (2 * doubletons)) if doubletons > 0 else richness
+    
+    # Berger-Parker Dominance
+    berger_parker = counts.max() / total if total > 0 else 0
+    
+    # Hill Numbers (q=1)
+    hill_1 = np.exp(shannon)
+    
+    return pd.Series({
+        'Species_Richness': richness,
+        'Shannon_Wiener': shannon,
+        'Simpson': simpson,
+        'Pielou': pielou,
+        'Chao1': chao1,
+        'Berger_Parker': berger_parker,
+        'Hill_N1': hill_1
+    })
 
-# Apply a 7-day rolling average to smooth the time series
-species_counts['total_annotations_7d_avg'] = species_counts['total_annotations'].rolling(window=7).mean()
-species_counts['species_richness_7d_avg'] = species_counts['species_richness'].rolling(window=7).mean()
-species_counts['shannon_wiener_7d_avg'] = species_counts['shannon_wiener'].rolling(window=7).mean()
+# Calculate metrics for each date
+diversity_metrics = species_pivot.apply(calculate_diversity_metrics, axis=1)
 
-# Create line chart
-fig_ecol = go.Figure()
-fig_ecol.add_trace(go.Scatter(x=species_counts.index, y=species_counts['total_annotations_7d_avg'], mode='lines', name='Total Annotations (7-day Avg)'))
-fig_ecol.add_trace(go.Scatter(x=species_counts.index, y=species_counts['species_richness_7d_avg'], mode='lines', name='Species Richness (7-day Avg)'))
-fig_ecol.add_trace(go.Scatter(x=species_counts.index, y=species_counts['shannon_wiener_7d_avg'], mode='lines', name='Shannon-Wiener Index (7-day Avg)'))
-fig_ecol.update_layout(
-    title='Ecological Metrics Over Time',
-    xaxis_title='Date',
-    yaxis_title='Metric Value',
-    legend_title='Metrics',
-    template='plotly_white'
+# Add rolling averages
+window_size = 7
+for col in diversity_metrics.columns:
+    diversity_metrics[f'{col}_7d_avg'] = diversity_metrics[col].rolling(window=window_size).mean()
+
+# Let user select which metrics to display
+st.write("Select metrics to display:")
+available_metrics = [
+    'Species_Richness', 'Shannon_Wiener', 'Simpson', 'Pielou', 
+    'Chao1', 'Berger_Parker', 'Hill_N1'
+]
+selected_metrics = st.multiselect(
+    "Choose diversity metrics to plot",
+    available_metrics,
+    default=['Species_Richness', 'Shannon_Wiener', 'Simpson']
 )
-st.plotly_chart(fig_ecol)
+
+# Create plot with selected metrics
+if selected_metrics:
+    fig_ecol = go.Figure()
+    for metric in selected_metrics:
+        fig_ecol.add_trace(go.Scatter(
+            x=diversity_metrics.index,
+            y=diversity_metrics[f'{metric}_7d_avg'],
+            mode='lines',
+            name=f'{metric} (7-day Avg)'
+        ))
+    
+    fig_ecol.update_layout(
+        title='Ecological Metrics Over Time',
+        xaxis_title='Date',
+        yaxis_title='Metric Value',
+        legend_title='Metrics',
+        template='plotly_white'
+    )
+    st.plotly_chart(fig_ecol)
+
+    # Add explanatory text
+    st.markdown("""
+    **Metric Descriptions:**
+    - **Species Richness**: Number of different species present
+    - **Shannon-Wiener Index**: Measure of diversity considering both abundance and evenness
+    - **Simpson's Index**: Probability that two randomly selected individuals belong to different species
+    - **Pielou's Evenness**: How evenly individuals are distributed among species
+    - **Chao1**: Estimated true species richness including unobserved species
+    - **Berger-Parker Dominance**: Relative abundance of the most abundant species
+    - **Hill Number (N1)**: Effective number of species based on Shannon entropy
+    """)
 
 # --- Fit Statistical Model if Data is Sufficient ---
 X = species_counts[['total_annotations_7d_avg', 'species_richness_7d_avg']].dropna()
@@ -667,3 +732,87 @@ fig_network.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text',
 fig_network.update_layout(title="Species Co-occurrence Network",
                          showlegend=False)
 st.plotly_chart(fig_network)
+
+# --- Species Co-occurrence Network ---
+st.subheader("Species Co-occurrence Network")
+
+# Calculate correlations between species
+species_corr = species_pivot.corr()
+
+# Create network
+G = nx.Graph()
+
+# Add edges for significantly correlated species pairs
+correlation_threshold = st.slider("Correlation Threshold", 0.0, 1.0, 0.5, 0.1)
+for i in range(len(species_corr.columns)):
+    for j in range(i+1, len(species_corr.columns)):
+        corr = abs(species_corr.iloc[i,j])
+        if corr >= correlation_threshold:
+            species1 = species_corr.columns[i]
+            species2 = species_corr.columns[j]
+            G.add_edge(species1, species2, weight=corr)
+
+if len(G.edges()) == 0:
+    st.warning("No species pairs meet the correlation threshold. Try lowering the threshold.")
+else:
+    # Calculate layout
+    pos = nx.spring_layout(G, k=1, iterations=50)
+    
+    # Create edge trace
+    edge_x = []
+    edge_y = []
+    edge_text = []
+    for edge in G.edges(data=True):
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+        edge_text.append(f"Correlation: {edge[2]['weight']:.2f}")
+
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines')
+
+    # Create node trace
+    node_x = []
+    node_y = []
+    node_text = []
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(str(node))
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        hoverinfo='text',
+        text=node_text,
+        textposition="top center",
+        marker=dict(
+            showscale=True,
+            size=10,
+            line_width=2))
+
+    # Create the figure
+    fig_network = go.Figure(data=[edge_trace, node_trace],
+                          layout=go.Layout(
+                              title="Species Co-occurrence Network",
+                              showlegend=False,
+                              hovermode='closest',
+                              margin=dict(b=20,l=5,r=5,t=40),
+                              xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                              yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                          )
+    
+    st.plotly_chart(fig_network)
+    
+    # Add network statistics
+    st.write("Network Statistics:")
+    st.write(f"Number of species (nodes): {G.number_of_nodes()}")
+    st.write(f"Number of connections (edges): {G.number_of_edges()}")
+    if G.number_of_nodes() > 1:
+        st.write(f"Network density: {nx.density(G):.3f}")
+        st.write(f"Average clustering coefficient: {nx.average_clustering(G):.3f}")
