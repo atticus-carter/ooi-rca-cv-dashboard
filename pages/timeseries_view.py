@@ -556,10 +556,18 @@ st.write("Wavelet Analysis")
 # Perform continuous wavelet transform on total annotations
 total_annotations = species_pivot.sum(axis=1)
 widths = np.arange(1, 31)  # Range of periods to analyze
-# Use continuous wavelet transform from scipy.signal
-wavelet = signal.morlet2  # Using Morlet wavelet instead of deprecated ricker
-frequencies = np.linspace(1, 10, 30)
-cwtmatr = signal.cwt(total_annotations.values, wavelet, widths)
+
+# Create a simple wavelet function (Mexican Hat / Ricker wavelet)
+def ricker_wavelet(points, a):
+    vec = np.arange(0, points) - (points - 1.0) / 2
+    return (1 - (vec * vec) / (a * a)) * np.exp(-(vec * vec) / (2 * a * a))
+
+# Perform the wavelet transform
+cwtmatr = np.zeros((len(widths), len(total_annotations)))
+for ind, width in enumerate(widths):
+    wavelet = ricker_wavelet(min(10 * width, len(total_annotations)), width)
+    cwtmatr[ind, :] = np.convolve(total_annotations, wavelet, mode='same')
+
 fig_wavelet = px.imshow(np.abs(cwtmatr), 
                        labels=dict(x="Time", y="Scale", color="Power"),
                        title="Wavelet Transform of Total Annotations")
