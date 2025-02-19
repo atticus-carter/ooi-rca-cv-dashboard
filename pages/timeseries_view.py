@@ -284,3 +284,98 @@ for species in unique_species:
         st.plotly_chart(fig_species)
     except Exception as e:
         st.error(f"Error forecasting for species {species}: {e}")
+
+# --- Seasonal Decomposition ---
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+st.subheader("Seasonal Decomposition of Total Annotations")
+ts_decomp = species_counts['total_annotations'].dropna()  # Using raw total annotations
+if len(ts_decomp) >= 14:  # need at least two periods (e.g., 7-day period)
+    decomp_result = seasonal_decompose(ts_decomp, model='additive', period=7)
+    fig_decomp = go.Figure()
+    fig_decomp.add_trace(go.Scatter(x=ts_decomp.index, y=decomp_result.trend, mode='lines', name='Trend'))
+    fig_decomp.add_trace(go.Scatter(x=ts_decomp.index, y=decomp_result.seasonal, mode='lines', name='Seasonal'))
+    fig_decomp.add_trace(go.Scatter(x=ts_decomp.index, y=decomp_result.resid, mode='lines', name='Residual'))
+    fig_decomp.update_layout(title="Seasonal Decomposition (7-day Period)", xaxis_title="Date", yaxis_title="Value")
+    st.plotly_chart(fig_decomp)
+else:
+    st.write("Not enough data for seasonal decomposition.")
+
+# --- Species Accumulation and Rarefaction ---
+st.subheader("Species Accumulation Curve")
+# Using species_daily from earlier; create a pivot table per date.
+species_pivot = species_daily.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
+dates_sorted = sorted(species_pivot.index)
+cumulative_species = []
+species_set = set()
+for d in dates_sorted:
+    present = species_pivot.loc[d][species_pivot.loc[d] > 0].index.tolist()
+    species_set.update(present)
+    cumulative_species.append(len(species_set))
+fig_accum = go.Figure()
+fig_accum.add_trace(go.Scatter(x=list(range(1, len(dates_sorted)+1)), y=cumulative_species,
+                               mode='lines+markers', name='Accumulation'))
+fig_accum.update_layout(title="Species Accumulation Curve", xaxis_title="Number of Samples", yaxis_title="Cumulative Species Count")
+st.plotly_chart(fig_accum)
+
+# --- NMDS and PCoA for Interspecies Composition ---
+st.subheader("NMDS and PCoA of Interspecies Composition")
+from sklearn.manifold import MDS
+from sklearn.decomposition import PCA
+from scipy.spatial.distance import pdist, squareform
+
+# Compute Bray-Curtis dissimilarities from the species pivot table.
+bray_distance = squareform(pdist(species_pivot, metric='braycurtis'))
+# NMDS (non-metric MDS)
+mds = MDS(n_components=2, dissimilarity='precomputed', random_state=42, metric=False)
+nmds_coords = mds.fit_transform(bray_distance)
+fig_nmds = go.Figure(data=go.Scatter(x=nmds_coords[:,0], y=nmds_coords[:,1],
+                                      mode='markers', text=[str(d) for d in species_pivot.index]))
+fig_nmds.update_layout(title="NMDS of Interspecies Composition", xaxis_title="NMDS1", yaxis_title="NMDS2")
+st.plotly_chart(fig_nmds)
+# PCoA via PCA on the dissimilarity matrix
+pcoa = PCA(n_components=2)
+pcoa_coords = pcoa.fit_transform(bray_distance)
+fig_pcoa = go.Figure(data=go.Scatter(x=pcoa_coords[:,0], y=pcoa_coords[:,1],
+                                      mode='markers', text=[str(d) for d in species_pivot.index]))
+fig_pcoa.update_layout(title="PCoA of Interspecies Composition", xaxis_title="PCoA1", yaxis_title="PCoA2")
+st.plotly_chart(fig_pcoa)
+
+# --- Interactive Per Class ARIMA Forecasting ---
+st.subheader("Interactive Per Class ARIMA Forecasting")
+# Let user select a species (class) to generate its ARIMA forecast
+unique_species = data['class_name'].unique()
+selected_arima_class = st.selectbox("Select a Class for ARIMA Forecast", unique_species)
+if st.button("Generate ARIMA Forecast for Selected Class"):
+    try:
+        df_species = data[data['class_name'] == selected_arima_class].copy()
+        df_species['date'] = pd.to_datetime(df_species['timestamp']).dt.date
+        ts_species = df_species.groupby('date')['animal_count'].sum().dropna()
+        if len(ts_species) < 10:
+            st.write(f"Not enough data for ARIMA forecast for species: {selected_arima_class}")
+        else:
+            from statsmodels.tsa.arima.model import ARIMA
+            model_arima_species = ARIMA(ts_species, order=(1,1,1)).fit()
+            forecast_species = model_arima_species.get_forecast(steps=10)
+            forecast_index_species = pd.date_range(pd.to_datetime(ts_species.index[-1]), periods=10, freq='D')
+            forecast_series_species = forecast_species.predicted_mean
+            conf_int_species = forecast_species.conf_int()
+            fig_species = go.Figure()
+            fig_species.add_trace(go.Scatter(x=ts_species.index, y=ts_species, mode='lines', name='Observed'))
+            fig_species.add_trace(go.Scatter(x=forecast_index_species, y=forecast_series_species, mode='lines', name='Forecast'))
+            fig_species.add_trace(go.Scatter(
+                x=forecast_index_species, y=conf_int_species.iloc[:, 0],
+                mode='lines', line=dict(color='gray'), name='Lower CI'))
+            fig_species.add_trace(go.Scatter(
+                x=forecast_index_species, y=conf_int_species.iloc[:, 1],
+                mode='lines', line=dict(color='gray'), name='Upper CI'))
+            fig_species.update_layout(title=f"ARIMA Forecast for {selected_arima_class}",
+                                      xaxis_title="Date", yaxis_title="Animal Count", template='plotly_white')
+            st.plotly_chart(fig_species)
+    except Exception as e:
+        st.error(f"Error forecasting for species {selected_arima_class}: {e}")
+
+# --- Note ---
+# The average annotations ARIMA forecast is still generated in the earlier ARIMA section.
+# The per-class ARIMA forecast is generated in the interactive section.
+# The ARIMA forecasts are generated for the next 10 days.
