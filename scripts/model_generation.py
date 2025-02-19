@@ -3,6 +3,9 @@ from ultralytics import YOLO
 import logging
 import urllib.request  # Import urllib
 import glob  # Import glob
+import cv2
+import numpy as np
+from PIL import Image
 
 # --- Configure Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -58,7 +61,7 @@ def load_model(model_name):
     models[model_name] = model
     return model
 
-def generate_predictions(image_path, model_name="SHR_DSCAM", conf_thres=0.25, iou_thres=0.45): # Default model
+def generate_predictions(img_array, model_name="SHR_DSCAM", conf_thres=0.25, iou_thres=0.45): # Default model
     """Generates YOLO predictions for a given image using the specified model."""
     try:
         model = load_model(model_name)
@@ -68,8 +71,10 @@ def generate_predictions(image_path, model_name="SHR_DSCAM", conf_thres=0.25, io
         return []
 
     try:
-        logging.info(f"Running YOLO inference on image: {image_path}")
-        results = model(image_path, imgsz=1024, conf=conf_thres, iou=iou_thres)  # Run inference with thresholds and image size
+        logging.info(f"Running YOLO inference on image")
+        # Convert the image array to a PIL Image
+        img_pil = Image.fromarray(img_array)
+        results = model(img_pil, imgsz=1024, conf=conf_thres, iou=iou_thres)  # Run inference with thresholds and image size
 
         predictions = []
         for result in results:
@@ -90,9 +95,9 @@ def generate_predictions(image_path, model_name="SHR_DSCAM", conf_thres=0.25, io
                     "bbox": bbox, # normalized
                     "confidence": confidence,
                 })
-        logging.info(f"Generated {len(predictions)} predictions for image: {image_path}")
+        logging.info(f"Generated {len(predictions)} predictions for image")
         return predictions
     except Exception as e:
-        logging.error(f"Error during inference on image {image_path}: {e}", exc_info=True)
+        logging.error(f"Error during inference on image: {e}", exc_info=True)
         print(f"Error during inference: {e}")
         return []
