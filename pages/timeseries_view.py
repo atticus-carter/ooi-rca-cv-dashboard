@@ -183,7 +183,7 @@ df_ecol = data.copy()
 df_ecol['date'] = pd.to_datetime(df_ecol['timestamp']).dt.date
 species_pivot = df_ecol.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
 
-# Calculate diversity metrics for each date
+# Initialize the diversity metrics DataFrame with basic counts
 diversity_metrics = pd.DataFrame(index=species_pivot.index)
 diversity_metrics['Total_Annotations'] = species_pivot.sum(axis=1)
 diversity_metrics['Species_Richness'] = (species_pivot > 0).sum(axis=1)
@@ -235,7 +235,7 @@ def calculate_diversity_metrics(row):
         'Hill_N1': hill_1
     })
 
-# Calculate additional metrics
+# Calculate additional metrics and combine with basic metrics
 additional_metrics = species_pivot.apply(calculate_diversity_metrics, axis=1)
 diversity_metrics = pd.concat([diversity_metrics, additional_metrics], axis=1)
 
@@ -305,7 +305,7 @@ st.subheader("Advanced Ecological Analysis")
 # Mann-Kendall Trend Test on Total Annotations (7-day Avg)
 try:
     import pymannkendall as mk
-    ts = diversity_metrics['Total_Annotations_7d'].dropna()  # Use the correct column name
+    ts = diversity_metrics['Total_Annotations_7d'].dropna()
     if len(ts) >= 10:
         result = mk.original_test(ts)
         st.write("Mann-Kendall Trend Test on Total Annotations (7d Avg):")
@@ -318,10 +318,13 @@ except Exception as e:
     st.error(f"Error performing Mann-Kendall test: {e}")
 
 # ARIMA Forecasting for Total Annotations (7-day Avg)
+st.subheader("ARIMA Forecasting")
 try:
     from statsmodels.tsa.arima.model import ARIMA
-    ts = diversity_metrics['Total_Annotations_7d'].dropna()  # Use the correct column name
-    if len(ts) >= 10:  # Ensure we have enough data points
+    ts = diversity_metrics['Total_Annotations_7d'].dropna()
+    if len(ts) >= 10:
+        # Convert index to datetime with frequency
+        ts.index = pd.DatetimeIndex(ts.index).to_period('D').to_timestamp()
         model_arima = ARIMA(ts, order=(1,1,1)).fit()
         forecast = model_arima.get_forecast(steps=10)
         forecast_index = pd.date_range(ts.index[-1], periods=10, freq='D')
@@ -350,7 +353,7 @@ except Exception as e:
 
 # --- Fit Statistical Model if Data is Sufficient ---
 try:
-    X = species_counts[['total_annotations_7d_avg', 'species_richness_7d_avg']].dropna()
+    X = species_pivot[['Total_Annotations_7d', 'Species_Richness_7d']].dropna()
     y = diversity_metrics['Shannon_Wiener'].dropna()
     X, y = X.align(y, join='inner', axis=0)
     if not X.empty and not y.empty and X.shape[0] >= 2:
@@ -390,46 +393,6 @@ fig_class.update_layout(
 )
 
 st.plotly_chart(fig_class)
-
-# --- Advanced Ecological Analysis ---
-
-st.subheader("Advanced Ecological Analysis")
-
-# Mann-Kendall Trend Test on Total Annotations (7-day Avg)
-try:
-    import pymannkendall as mk
-    result = mk.original_test(species_counts['total_annotations_7d_avg'].dropna())
-    st.write("Mann-Kendall Trend Test on Total Annotations (7d Avg):")
-    st.write(f"Trend: {result.trend}, p-value: {result.p}")
-except ImportError:
-    st.warning("pymannkendall library not installed. Skipping Mann-Kendall trend test.")
-
-# ARIMA Forecasting for Total Annotations (7-day Avg)
-try:
-    from statsmodels.tsa.arima.model import ARIMA
-    ts = species_counts['total_annotations_7d_avg'].dropna()
-    model_arima = ARIMA(ts, order=(1,1,1)).fit()
-    forecast = model_arima.get_forecast(steps=10)
-    forecast_index = pd.date_range(ts.index[-1], periods=10, freq='D')
-    forecast_series = forecast.predicted_mean
-    conf_int = forecast.conf_int()
-    fig_arima = go.Figure()
-    fig_arima.add_trace(go.Scatter(x=ts.index, y=ts, mode='lines', name='Observed'))
-    fig_arima.add_trace(go.Scatter(x=forecast_index, y=forecast_series, mode='lines', name='Forecast'))
-    fig_arima.add_trace(go.Scatter(
-        x=forecast_index, y=conf_int.iloc[:, 0],
-        mode='lines', line=dict(color='gray'), name='Lower CI'))
-    fig_arima.add_trace(go.Scatter(
-        x=forecast_index, y=conf_int.iloc[:, 1],
-        mode='lines', line=dict(color='gray'), name='Upper CI'))
-    fig_arima.update_layout(
-        title="ARIMA Forecast: Total Annotations (7d Avg)",
-        xaxis_title="Date",
-        yaxis_title="Total Annotations"
-    )
-    st.plotly_chart(fig_arima)
-except Exception as e:
-    st.error(f"Error performing ARIMA forecasting: {e}")
 
 # --- Interspecies Occurrence Correlation Heatmap ---
 st.subheader("Interspecies Occurrence Correlation Heatmap")
@@ -494,7 +457,7 @@ for species in unique_species:
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 st.subheader("Seasonal Decomposition of Total Annotations")
-ts_decomp = species_counts['total_annotations'].dropna()  # Using raw total annotations
+ts_decomp = diversity_metrics['Total_Annotations'].dropna()  # Using raw total annotations
 if len(ts_decomp) >= 14:  # need at least two periods (e.g., 7-day period)
     decomp_result = seasonal_decompose(ts_decomp, model='additive', period=7)
     fig_decomp = go.Figure()
