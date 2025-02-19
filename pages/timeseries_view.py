@@ -83,6 +83,31 @@ if schema_option == "Cluster":
     cluster_cols = [col for col in data.columns if "Cluster" in col]
     for col in cluster_cols:
         data[col] = pd.to_numeric(data[col], errors="coerce")
+    
+    # --- Plot Cluster Counts Over Time ---
+    st.subheader("Cluster Counts Over Time")
+    fig_cluster = go.Figure()
+    for col in cluster_cols:
+        fig_cluster.add_trace(go.Scatter(x=data["timestamp"], y=data[col], mode="lines+markers", name=col))
+    fig_cluster.update_layout(title="Clusters Over Time", xaxis_title="Time", yaxis_title="Count")
+    st.plotly_chart(fig_cluster)
+    
+    # --- Process and Plot Object Detection Data ---
+    # Identify object detection columns (assumed to be those whose header is a digit)
+    obj_detect_cols = [col for col in data.columns if col.isdigit()]
+    if obj_detect_cols:
+        st.subheader("Object Detections as Percentage Over Time")
+        # Group by date: use the 'timestamp' column already extracted
+        data['date'] = pd.to_datetime(data['timestamp']).dt.date
+        obj_daily = data.groupby('date')[obj_detect_cols].sum()
+        # For each date, convert counts to percentages (i.e. out of 100)
+        obj_percent = obj_daily.div(obj_daily.sum(axis=1), axis=0) * 100
+        obj_percent = obj_percent.reset_index().melt(id_vars='date', value_vars=obj_detect_cols,
+                                                     var_name='class', value_name='percentage')
+        fig_obj = px.area(obj_percent, x='date', y='percentage', color='class',
+                          title="Object Detections (% of Total) Over Time")
+        st.plotly_chart(fig_obj)
+
 else:
     # Standard schema: create timestamp from 'date' (and 'time' if present)
     if 'time' in data.columns:
