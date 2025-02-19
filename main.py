@@ -115,8 +115,8 @@ def display_latest_image_with_predictions(camera_id, selected_model=None, conf_t
                 st.warning(f"Could not decode image from URL: {image_url}")
                 return None
 
-        # Resize the image
-        img_cv = cv2.resize(img_cv, (1024, 1024))
+        # Resize the image using bicubic interpolation
+        img_cv = cv2.resize(img_cv, (1024, 1024), interpolation=cv2.INTER_CUBIC)
         img_pil = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
         img_width, img_height = img_pil.size
 
