@@ -12,8 +12,12 @@ camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_
 selected_camera = st.selectbox("Select Camera", camera_names)
 
 # --- List Available CSV Files ---
-base_dir = f"C:/Users/Attca/OneDrive/Documents/GitHub/ooi-rca-cv-dashboard/timeseries/{selected_camera}"
+base_dir = os.path.join("timeseries", selected_camera)
+st.write(f"Searching for CSV files in: {base_dir}")  # Debugging information
+
 csv_files = glob.glob(os.path.join(base_dir, "**", "*.csv"), recursive=True)
+st.write(f"Found CSV files: {csv_files}")  # Debugging information
+
 csv_files = [os.path.relpath(f, base_dir) for f in csv_files]
 
 if not csv_files:

@@ -5,6 +5,7 @@ import plotly.express as px
 import yaml
 from datetime import datetime, timedelta
 import os
+import glob
 
 # Load configuration
 with open("config.yaml", "r") as f:
