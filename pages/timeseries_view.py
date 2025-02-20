@@ -191,7 +191,7 @@ diversity_metrics['Total_Annotations'] = species_pivot.sum(axis=1)
 diversity_metrics['Species_Richness'] = (species_pivot > 0).sum(axis=1)
 
 # Calculate additional diversity metrics
-def calculate_diversity_metrics(row:
+def calculate_diversity_metrics(row):
     counts = row[row > 0]  # Only consider non-zero counts
     total = counts.sum()
     if total == 0:
