@@ -191,7 +191,7 @@ diversity_metrics['Total_Annotations'] = species_pivot.sum(axis=1)
 diversity_metrics['Species_Richness'] = (species_pivot > 0).sum(axis=1)
 
 # Calculate additional diversity metrics
-def calculate_diversity_metrics(row):
+def calculate_diversity_metrics(row:
     counts = row[row > 0]  # Only consider non-zero counts
     total = counts.sum()
     if total == 0:
@@ -697,23 +697,17 @@ fig_change.add_trace(go.Scatter(
     name='Total Annotations'
 ))
 
-# Add vertical lines for change points
+# Add vertical lines for change points with correct properties
 for cp in change_points[:-1]:
     cp_date = total_annotations.index[cp]
-    # Use correct shape properties (x0, x1, y0, y1)
     fig_change.add_shape(
         type="line",
-        x=cp_date,
+        x0=cp_date,
         x1=cp_date,
         y0=0,
         y1=total_annotations.max(),
-        line=dict(
-            color="red",
-            width=2,
-            dash="dash"
-        )
+        line=dict(color="red", width=2, dash="dash")
     )
-    # Add annotation with correct position
     fig_change.add_annotation(
         x=cp_date,
         y=total_annotations.max(),
@@ -730,7 +724,6 @@ fig_change.update_layout(
     yaxis_title="Total Annotations",
     showlegend=True
 )
-
 st.plotly_chart(fig_change)
 
 # Change Point Detection and Community Analysis
