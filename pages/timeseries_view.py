@@ -695,7 +695,7 @@ for cp in change_points[:-1]:
     cp_date = total_annotations.index[cp]
     fig_change.add_shape(
         type="line",
-        x0=cp_date,
+        x=cp_date,
         x1=cp_date,
         y0=0,
         y1=1,
@@ -913,7 +913,7 @@ def compute_total_cost(signal, bkps, cost_func):
     total_cost = 0
     start = 0
     for bp in bkps:
-        total_cost += cost_func.error(signal[start:bp])
+        total_cost += cost_func.error(signal, start, bp)
         start = bp
     return total_cost
 
