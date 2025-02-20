@@ -914,18 +914,18 @@ except Exception as e:
 
 # --- Overall Change Point Significance ---
 st.write("### Overall Change Point Significance")
-def compute_total_cost(signal, bkps, cost_func):
+def compute_total_cost(bkps, cost_obj):
     total_cost = 0
     start = 0
     for bp in bkps:
-        total_cost += cost_func.error(signal, start, bp)
+        total_cost += cost_obj.error(start, bp)
         start = bp
     return total_cost
 
 cost_scores = []
 for k in range(1, 6):
     bkps = change_detector.predict(n_bkps=k)
-    score = compute_total_cost(ts.values, bkps, change_detector.cost)
+    score = compute_total_cost(bkps, change_detector.cost)
     cost_scores.append(score)
 
 fig_cost = go.Figure()
