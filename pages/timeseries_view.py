@@ -683,33 +683,43 @@ st.plotly_chart(fig_wavelet)
 # Change Point Detection
 st.write("Change Point Detection")
 from ruptures import Binseg
+
 # Detect change points in total annotations
 change_detector = Binseg(model="l2").fit(total_annotations.values.reshape(-1, 1))
 change_points = change_detector.predict(n_bkps=3)
 fig_change = go.Figure()
-fig_change.add_trace(go.Scatter(x=total_annotations.index, y=total_annotations, 
-                               mode='lines', name='Total Annotations'))
 
-# Add vertical lines as shapes instead of using add_vline
+# Plot the total annotations line
+fig_change.add_trace(go.Scatter(
+    x=total_annotations.index,
+    y=total_annotations,
+    mode='lines',
+    name='Total Annotations'
+))
+
+# Add vertical lines for change points
 for cp in change_points[:-1]:
     cp_date = total_annotations.index[cp]
+    # Use correct shape properties (x0, x1, y0, y1)
     fig_change.add_shape(
         type="line",
         x0=cp_date,
         x1=cp_date,
         y0=0,
-        y1=1,
-        yref="paper",
-        line=dict(color="red", width=2, dash="dash"),
+        y1=total_annotations.max(),
+        line=dict(
+            color="red",
+            width=2,
+            dash="dash"
+        )
     )
-    # Add annotation
+    # Add annotation with correct position
     fig_change.add_annotation(
         x=cp_date,
-        y=1,
+        y=total_annotations.max(),
         text="Change Point",
         showarrow=True,
         arrowhead=1,
-        yref="paper",
         ax=0,
         ay=-40
     )
@@ -717,8 +727,10 @@ for cp in change_points[:-1]:
 fig_change.update_layout(
     title="Change Points in Community Composition",
     xaxis_title="Date",
-    yaxis_title="Total Annotations"
+    yaxis_title="Total Annotations",
+    showlegend=True
 )
+
 st.plotly_chart(fig_change)
 
 # Change Point Detection and Community Analysis
