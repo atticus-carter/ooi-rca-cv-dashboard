@@ -703,7 +703,7 @@ for cp in change_points[:-1]:
     # Use correct shape properties (x0, x1, y0, y1)
     fig_change.add_shape(
         type="line",
-        x0=cp_date,
+        x=cp_date,
         x1=cp_date,
         y0=0,
         y1=total_annotations.max(),
@@ -747,10 +747,9 @@ try:
     dates = total_annotations.index
     
     for cp in change_points[:-1]:
-        cp_date = dates[cp]
         segment = {
             'start_date': dates[start_idx],
-            'end_date': cp_date,
+            'end_date': dates[cp],
             'data': species_pivot.iloc[start_idx:cp]
         }
         segments.append(segment)
@@ -827,9 +826,9 @@ try:
                 
                 # Interpretation
                 if p_val < 0.05:
-                    st.write("🔍 The communities are significantly different (p < 0.05)")
+                    st.write(" The communities are significantly different (p < 0.05)")
                 else:
-                    st.write("🔍 No significant difference between communities (p >= 0.05)")
+                    st.write(" No significant difference between communities (p >= 0.05)")
                 
                 # Calculate and display community turnover
                 species_before = set(prev_segment.columns[prev_segment.sum() > 0])
@@ -919,6 +918,34 @@ try:
 
 except Exception as e:
     st.error(f"Error performing detailed change point analysis: {e}")
+
+# --- Overall Change Point Significance ---
+st.write("### Overall Change Point Significance")
+def compute_total_cost(signal, bkps, cost_func):
+    total_cost = 0
+    start = 0
+    for bp in bkps:
+        total_cost += cost_func.error(signal, start, bp)
+        start = bp
+    return total_cost
+
+cost_scores = []
+for k in range(1, 6):
+    bkps = change_detector.predict(n_bkps=k)
+    score = compute_total_cost(ts.values, bkps, change_detector.cost)
+    cost_scores.append(score)
+
+fig_cost = go.Figure()
+fig_cost.add_trace(go.Scatter(x=list(range(1, 6)), y=cost_scores, mode='lines+markers'))
+fig_cost.update_layout(
+    title="Total Cost Scores vs. Number of Change Points",
+    xaxis_title="Number of Change Points",
+    yaxis_title="Total Cost Score"
+)
+st.plotly_chart(fig_cost)
+
+optimal_cp = cost_scores.index(min(cost_scores)) + 1
+st.write(f"Optimal number of change points (based on minimal total cost): {optimal_cp}")
 
 # Time-lag Analysis
 st.write("Time-lag Analysis")
@@ -1057,3 +1084,50 @@ else:
     if G.number_of_nodes() > 1:
         st.write(f"Network density: {nx.density(G):.3f}")
         st.write(f"Average clustering coefficient: {nx.average_clustering(G):.3f}")
+
+# --- Anomaly Detection ---
+st.subheader("Anomaly Detection")
+window_size = st.slider("Rolling Window Size (days)", min_value=3, max_value=30, value=7, step=1)
+z_threshold = st.slider("Z-Score Threshold", min_value=1.0, max_value=5.0, value=2.5, step=0.1)
+
+# Aggregate data by date
+daily_counts = data.copy()
+daily_counts['date'] = pd.to_datetime(daily_counts['timestamp']).dt.date
+daily_agg = daily_counts.groupby('date')['animal_count'].sum().reset_index()
+daily_agg['date'] = pd.to_datetime(daily_agg['date'])
+daily_agg.sort_values('date', inplace=True)
+
+# Compute rolling statistics
+daily_agg['rolling_mean'] = daily_agg['animal_count'].rolling(window=window_size, min_periods=1, center=True).mean()
+daily_agg['rolling_std'] = daily_agg['animal_count'].rolling(window=window_size, min_periods=1, center=True).std().fillna(0)
+
+# Calculate z-scores and flag anomalies
+daily_agg['z_score'] = (daily_agg['animal_count'] - daily_agg['rolling_mean']) / daily_agg['rolling_std']
+anomalies = daily_agg[abs(daily_agg['z_score']) > z_threshold]
+
+# Plotting the results
+fig_anom = go.Figure()
+fig_anom.add_trace(go.Scatter(x=daily_agg['date'], y=daily_agg['animal_count'],
+                              mode='lines', name='Daily Count'))
+fig_anom.add_trace(go.Scatter(x=daily_agg['date'], y=daily_agg['rolling_mean'],
+                              mode='lines', name='Rolling Mean'))
+if not anomalies.empty:
+    fig_anom.add_trace(go.Scatter(x=anomalies['date'], y=anomalies['animal_count'],
+                                  mode='markers', marker=dict(color='red', size=10),
+                                  name='Anomaly'))
+fig_anom.update_layout(title="Anomaly Detection in Daily Animal Counts",
+                      xaxis_title="Date", yaxis_title="Animal Count",
+                      template='plotly_white')
+st.plotly_chart(fig_anom)
+st.write("Anomalous Days Detected:")
+st.write(anomalies[['date', 'animal_count', 'z_score']])
+
+# --- Plain Language Summary ---
+st.markdown("## Plain Language Summary")
+summary_text = f"""
+After analyzing the data across multiple dimensions, several key observations emerge:
+
+1. **Overall Trends and Fluctuations:**  
+   The daily total animal counts exhibit periods of significant variability. The rolling average computed over a window of {st.session_state.get('window_size', 7) if 'window_size' in st.session_state else 7} days smooths short-term noise, while days with z-scores above the chosen threshold (set at {st.session_state.get('z_threshold', 2.5) if 'z_threshold' in st.session_state else 2.5}) have been flagged as anomalies. These anomalies may indicate unusual events or shifts in underlying behaviors.
+"""
+st.markdown(summary_text)
