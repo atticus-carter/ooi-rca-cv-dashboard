@@ -735,10 +735,9 @@ try:
     dates = total_annotations.index
     
     for cp in change_points[:-1]:
-        cp_date = dates[cp]
         segment = {
             'start_date': dates[start_idx],
-            'end_date': cp_date,
+            'end_date': dates[cp],
             'data': species_pivot.iloc[start_idx:cp]
         }
         segments.append(segment)
@@ -907,6 +906,34 @@ try:
 
 except Exception as e:
     st.error(f"Error performing detailed change point analysis: {e}")
+
+# --- Overall Change Point Significance ---
+st.write("### Overall Change Point Significance")
+def compute_total_cost(signal, bkps, cost_func):
+    total_cost = 0
+    start = 0
+    for bp in bkps:
+        total_cost += cost_func.error(signal[start:bp])
+        start = bp
+    return total_cost
+
+cost_scores = []
+for k in range(1, 6):
+    bkps = change_detector.predict(n_bkps=k)
+    score = compute_total_cost(ts.values, bkps, change_detector.cost)
+    cost_scores.append(score)
+
+fig_cost = go.Figure()
+fig_cost.add_trace(go.Scatter(x=list(range(1, 6)), y=cost_scores, mode='lines+markers'))
+fig_cost.update_layout(
+    title="Total Cost Scores vs. Number of Change Points",
+    xaxis_title="Number of Change Points",
+    yaxis_title="Total Cost Score"
+)
+st.plotly_chart(fig_cost)
+
+optimal_cp = cost_scores.index(min(cost_scores)) + 1
+st.write(f"Optimal number of change points (based on minimal total cost): {optimal_cp}")
 
 # Time-lag Analysis
 st.write("Time-lag Analysis")
