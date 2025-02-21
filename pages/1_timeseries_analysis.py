@@ -5,6 +5,7 @@ import glob
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+import statsmodels.api as sm
 from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns, melt_species_data
 
 # --- Page Configuration ---
@@ -50,21 +51,13 @@ if 'Timestamp' in data.columns:
     # --- Analysis Options ---
     st.header("Analysis Options")
     analysis_type = st.selectbox("Select Analysis Type", 
-                               ["Basic Time Series",
-                                "Stacked Visualizations", 
+                               ["Stacked Visualizations", 
                                 "Multi-class Timeline",
                                 "Class Distribution", 
-                                "Confidence Distribution",
                                 "Cluster Analysis",
                                 "Environmental Variable Analysis"])
 
     # --- Visualization Functions ---
-    def plot_basic_timeseries():
-        fig = px.line(melted_data, x='timestamp', y='animal_count', 
-                      color='class_name', title="Animal Counts Over Time")
-        fig.update_layout(legend_title="Species")
-        return fig
-
     def plot_class_distribution():
         class_counts = melted_data.groupby('class_name')['animal_count'].sum().reset_index()
         fig = px.bar(class_counts, x='class_name', y='animal_count', 
@@ -72,35 +65,92 @@ if 'Timestamp' in data.columns:
         fig.update_layout(xaxis_title="Species", yaxis_title="Count")
         return fig
 
-    def plot_confidence_distribution():
-        return None
-
     def plot_cluster_analysis():
+        """Enhanced cluster analysis with regression lines and statistics."""
         if not any("Cluster" in col for col in data.columns):
             st.warning("No cluster data available in the selected files.")
             return None
         
+        # Get cluster columns
         cluster_cols = [col for col in data.columns if "Cluster" in col]
-        cluster_data = data.melt(id_vars=['timestamp'], 
-                               value_vars=cluster_cols,
-                               var_name='Cluster Type',
-                               value_name='Count')
         
-        fig_clusters = go.Figure()
-        for col in cluster_cols:
-            fig_clusters.add_trace(go.Bar(
-                name=col,
-                x=cluster_data['timestamp'],
-                y=cluster_data['Count']
+        # Allow users to rename clusters
+        st.subheader("Cluster Renaming")
+        new_names = {}
+        cols = st.columns(len(cluster_cols))
+        for i, col in enumerate(cluster_cols):
+            with cols[i]:
+                new_names[col] = st.text_input(f"Rename {col}", value=col)
+        
+        # Create DataFrame with renamed clusters
+        cluster_data = data[['timestamp'] + cluster_cols].copy()
+        for old_name, new_name in new_names.items():
+            if old_name != new_name:
+                cluster_data = cluster_data.rename(columns={old_name: new_name})
+        
+        # Merge clusters with same name
+        unique_names = list(set(new_names.values()))
+        merged_data = pd.DataFrame({'timestamp': cluster_data['timestamp']})
+        for name in unique_names:
+            cols_to_merge = [col for col in cluster_data.columns if col == name]
+            if len(cols_to_merge) > 1:
+                merged_data[name] = cluster_data[cols_to_merge].sum(axis=1)
+            else:
+                merged_data[name] = cluster_data[name]
+        
+        # Create visualization
+        fig = go.Figure()
+        
+        # Plot stacked bars for each cluster
+        for column in unique_names:
+            fig.add_trace(go.Bar(
+                x=merged_data['timestamp'],
+                y=merged_data[column],
+                name=column
             ))
-
-        fig_clusters.update_layout(
+            
+            # Add regression line
+            X = np.arange(len(merged_data)).reshape(-1, 1)
+            y = merged_data[column].values
+            X_sm = sm.add_constant(X)
+            model = sm.OLS(y, X_sm).fit()
+            predictions = model.predict(X_sm)
+            
+            # Calculate equation and R-squared
+            slope = model.params[1]
+            intercept = model.params[0]
+            equation = f'y = {slope:.2e}x + {intercept:.2f}'
+            r_squared = model.rsquared
+            
+            # Add regression line
+            fig.add_trace(go.Scatter(
+                x=merged_data['timestamp'],
+                y=predictions,
+                mode='lines',
+                name=f'{column} Trend',
+                line=dict(dash='dash')
+            ))
+            
+            # Add annotation
+            fig.add_annotation(
+                x=merged_data['timestamp'].iloc[-1],
+                y=predictions[-1],
+                text=f'{column}:<br>{equation}<br>R² = {r_squared:.3f}',
+                showarrow=False,
+                yshift=10
+            )
+        
+        fig.update_layout(
             barmode='stack',
-            title="Cluster Composition Over Time",
-            xaxis_title="Time",
-            yaxis_title="Count"
+            title='Cluster Coverage Analysis Over Time',
+            xaxis_title='Time',
+            yaxis_title='Coverage',
+            template='plotly_white',
+            hovermode='x unified',
+            legend_title='Clusters'
         )
-        return fig_clusters
+        
+        return fig
 
     def plot_environmental_analysis():
         if env_vars:
@@ -231,14 +281,8 @@ if 'Timestamp' in data.columns:
         return fig
 
     # --- Render Visualizations ---
-    if analysis_type == "Basic Time Series":
-        st.plotly_chart(plot_basic_timeseries(), use_container_width=True)
-        
-    elif analysis_type == "Class Distribution":
+    if analysis_type == "Class Distribution":
         st.plotly_chart(plot_class_distribution(), use_container_width=True)
-        
-    elif analysis_type == "Confidence Distribution":
-        st.write("Confidence Distribution Removed")
         
     elif analysis_type == "Cluster Analysis":
         fig = plot_cluster_analysis()
