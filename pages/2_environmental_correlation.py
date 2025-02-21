@@ -7,6 +7,8 @@ from scipy import stats
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns
+import os
+import glob
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Environmental Correlation Analysis", layout="wide")
