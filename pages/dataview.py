@@ -1,12 +1,9 @@
 import streamlit as st
-import duckdb
 import pandas as pd
-import re
 import os
-from scripts.model_generation import model_urls, generate_predictions  # Import generate_predictions
-import io
-import cv2  # opencv
-from PIL import Image  # Import Pillow for image handling
+from PIL import Image
+import cv2
+import re
 
 # --- Camera Names ---
 camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
@@ -19,26 +16,40 @@ else:
 
     # --- Load variables from Session State ---
     camera_id = st.session_state.camera
-    selected_model = st.session_state.get("selected_model", "SHR_DSCAM")
-    year_month = "2021-08"
+    year_month = "2021-08"  # This might not be relevant anymore
 
-    try:
-        parquet_file_path = os.path.join("images", camera_id, year_month, "predictions.parquet")
-        df = pd.read_parquet(parquet_file_path)
-    except Exception as e:
-        st.error(f"Error loading Parquet file: {e}")
+    # --- File Selection ---
+    data_dir = os.path.join("timeseries", camera_id)
+    csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
+    if not csv_files:
+        st.error(f"No CSV files found in {data_dir}")
         st.stop()
 
-    # --- Model Selection ---
-    available_models = list(model_urls.keys())
-    selected_model = st.selectbox("Select Model", available_models, index=available_models.index(selected_model))
+    selected_csv = st.selectbox("Select CSV File", csv_files)
+
+    try:
+        df = pd.read_csv(selected_csv)
+    except Exception as e:
+        st.error(f"Error loading CSV file: {e}")
+        st.stop()
+
+    # --- Extract Class Names ---
+    class_names = []
+    for col in df.columns:
+        if col == "File" or col == "Timestamp":
+            continue
+        if "Cluster" in col:
+            break
+        class_names.append(col)
 
     # --- Class Name Filtering ---
-    unique_class_names = df['class_name'].unique().tolist()
-    selected_class = st.selectbox("Filter by Class", ['All'] + unique_class_names)
+    selected_class = st.selectbox("Filter by Class", ['All'] + class_names)
 
     if selected_class != 'All':
-        df = df[df['class_name'] == selected_class]
+        if selected_class not in class_names:
+            st.error(f"Class '{selected_class}' not found in the data.")
+            st.stop()
+        df = df[df[selected_class] > 0]  # Filter rows where the class count is greater than 0
 
     # --- Pagination ---
     items_per_page = 10
@@ -51,32 +62,22 @@ else:
 
     # --- Display Images with Bounding Boxes ---
     for index, row in df_page.iterrows():
-        image_path = row['image_path']
-        class_name = row['class_name']
-        confidence = row['confidence']
-        bbox_x, bbox_y, bbox_width, bbox_height = row['bbox_x'], row['bbox_y'], row['bbox_width'], row['bbox_height']
+        image_filename = row['File']
+        timestamp = row['Timestamp']
+        
+        # Construct image path (assuming images are in a directory relative to the CSV)
+        image_path = os.path.join("images", camera_id, os.path.splitext(image_filename)[0] + ".jpg")  # Adjust extension if needed
+
+        if not os.path.exists(image_path):
+            st.warning(f"Image not found: {image_path}")
+            continue
 
         try:
-            # Open the image using PIL
             img = Image.open(image_path)
-            img_width, img_height = img.size
-
-            # Calculate bounding box coordinates
-            x1 = int((bbox_x - bbox_width / 2) * img_width)
-            y1 = int((bbox_y - bbox_height / 2) * img_height)
-            x2 = int((bbox_x + bbox_width / 2) * img_width)
-            y2 = int((bbox_y + bbox_height / 2) * img_height)
-
-            # Draw bounding box and label on the image using OpenCV
             img_cv = cv2.imread(image_path)
-            cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"{class_name} {confidence:.2f}"
-            cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-            # Convert back to PIL image for Streamlit
-            img_pil = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
-
-            st.image(img_pil, caption=f"Class: {class_name}, Confidence: {confidence:.2f}")
+            # Display image
+            st.image(img, caption=f"File: {image_filename}, Timestamp: {timestamp}")
 
         except Exception as e:
             st.error(f"Error processing image {image_path}: {e}")

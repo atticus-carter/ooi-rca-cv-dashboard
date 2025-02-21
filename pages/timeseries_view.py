@@ -8,6 +8,7 @@ import numpy as np
 import statsmodels.api as sm
 from scipy.stats import f_oneway
 import pymannkendall as mk
+from sklearn.preprocessing import StandardScaler
 
 # --- Page Title ---
 st.title("Timeseries Data View")
@@ -64,126 +65,129 @@ if not dfs:
 
 data = pd.concat(dfs)
 
-# --- CSV Schema Detection and Processing ---
-if any("Cluster" in col for col in data.columns):
-    schema_option = st.radio("Select CSV Schema", options=["Standard", "Cluster"], index=0)
-else:
-    schema_option = "Standard"
+# --- Data Preprocessing ---
+# Convert Timestamp to datetime
+data['Timestamp'] = pd.to_datetime(data['Timestamp'])
+data.sort_values('Timestamp', inplace=True)
+data.set_index('Timestamp', inplace=True)
 
-if schema_option == "Cluster":
-    # Process cluster CSV: extract datetime from "File" column; assume filename pattern has YYYYMMDDTHHMMSS.
-    import re
-    def extract_datetime(filename):
-        m = re.search(r'(\d{8}T\d{6})', filename)
-        if m:
-            return pd.to_datetime(m.group(1), format="%Y%m%dT%H%M%S")
-        else:
-            return pd.NaT
-    data["timestamp"] = data["File"].apply(extract_datetime)
-    data = data.dropna(subset=["timestamp"])
-    # Convert any column that contains "Cluster" in its header to numeric.
-    cluster_cols = [col for col in data.columns if "Cluster" in col]
-    for col in cluster_cols:
-        data[col] = pd.to_numeric(data[col], errors="coerce")
-        
-    # --- Plot Cluster Counts Over Time ---
-    st.subheader("Cluster Counts Over Time")
-    fig_cluster = go.Figure()
-    for col in cluster_cols:
-        fig_cluster.add_trace(go.Scatter(x=data["timestamp"], y=data[col], mode="lines+markers", name=col))
-    fig_cluster.update_layout(title="Clusters Over Time", xaxis_title="Time", yaxis_title="Count")
-    st.plotly_chart(fig_cluster)
-    
-    # --- Process and Plot Object Detection Data ---
-    # Identify object detection columns (assumed to be those whose header is a digit)
-    obj_detect_cols = [col for col in data.columns if col.isdigit()]
-    if obj_detect_cols:
-        st.subheader("Object Detections as Percentage Over Time")
-        # Group by date: use the 'timestamp' column already extracted
-        data['date'] = pd.to_datetime(data['timestamp']).dt.date
-        obj_daily = data.groupby('date')[obj_detect_cols].sum()
-        # For each date, convert counts to percentages (i.e. out of 100)
-        obj_percent = obj_daily.div(obj_daily.sum(axis=1), axis=0) * 100
-        obj_percent = obj_percent.reset_index().melt(id_vars='date', value_vars=obj_detect_cols,
-                                                     var_name='class', value_name='percentage')
-        fig_obj = px.area(obj_percent, x='date', y='percentage', color='class',
-                          title="Object Detections (% of Total) Over Time")
-        st.plotly_chart(fig_obj)
+# --- Identify Class Names, Environmental Variables, and Cluster Columns ---
+class_names = []
+env_vars = []
+cluster_cols = []
 
-else:
-    # Standard schema: create timestamp from 'date' (and 'time' if present)
-    if 'time' in data.columns:
-        data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
+for col in data.columns:
+    if col in ['File', 'source_file']:
+        continue
+    if "Cluster" in col:
+        cluster_cols.append(col)
+    elif col in ['Temperature', 'Conductivity', 'Pressure', 'Salinity', 'Oxygen Phase, usec', 'Oxygen Temperature Voltage', 'PressurePSI']:
+        env_vars.append(col)
     else:
-        data['timestamp'] = pd.to_datetime(data['date'])
-    data.sort_values('timestamp', inplace=True)
-
-# --- If Cluster schema is active, graph cluster counts over time ---
-if schema_option == "Cluster":
-    st.subheader("Cluster Counts Over Time")
-    fig_cluster = go.Figure()
-    for col in cluster_cols:
-        fig_cluster.add_trace(go.Scatter(x=data["timestamp"], y=data[col], mode="lines+markers", name=col))
-    fig_cluster.update_layout(title="Clusters Over Time", xaxis_title="Time", yaxis_title="Count")
-    st.plotly_chart(fig_cluster)
-
-# --- Process Cluster CSV Schema if detected ---
-unique_classes = data['class_name'].unique().tolist()
-selected_classes = st.multiselect("Select Classes", unique_classes, default=unique_classes)
-if selected_classes:
-    data = data[data['class_name'].isin(selected_classes)]
-
-# --- Confidence Threshold ---
-conf_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.5)
-data = data[data['confidence'] >= conf_threshold]
-
-# --- Create Timestamp Column ---
-# If a time column is present, combine with date; otherwise use date only.
-if 'time' in data.columns:
-    data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
-else:
-    data['timestamp'] = pd.to_datetime(data['date'])
-data.sort_values('timestamp', inplace=True)
+        class_names.append(col)
 
 # --- Plotting Options ---
-plot_type = st.selectbox("Select Plot Type", ["Stacked Bar Chart", "Stacked Area Chart", "Average Confidence"])
+plot_type = st.selectbox("Select Plot Type", ["Individual Classes", "Environmental Variables", "Correlation Heatmap", "ARIMA Forecasting", "Anomaly Detection"])
 
-if plot_type == "Stacked Bar Chart":
-    fig = px.bar(data, x='timestamp', y='animal_count', color='class_name', title="Stacked Bar Chart")
-elif plot_type == "Stacked Area Chart":
-    # Aggregate counts by timestamp and class
-    df_area = data.groupby(['timestamp', 'class_name'])['animal_count'].sum().reset_index()
-    # Pivot to have timestamps as index and class_names as columns
-    pivot = df_area.pivot(index='timestamp', columns='class_name', values='animal_count').fillna(0)
-    # Convert raw counts to percentages per timestamp row
-    pivot_percent = pivot.div(pivot.sum(axis=1), axis=0) * 100
-    pivot_percent = pivot_percent.reset_index()
-    # Melt back to long format for Plotly Express
-    df_melted = pivot_percent.melt(id_vars='timestamp', var_name='class_name', value_name='percentage')
-    fig = px.area(df_melted, x='timestamp', y='percentage', color='class_name', title="Stacked Area Chart (Percentage)")
-elif plot_type == "Average Confidence":
-    fig = px.line(data, x='timestamp', y='confidence', color='class_name', title="Average Confidence Over Time")
-st.plotly_chart(fig)
+if plot_type == "Individual Classes":
+    selected_classes = st.multiselect("Select Classes to Plot", class_names, default=class_names[:min(5, len(class_names))])
+    if selected_classes:
+        fig = go.Figure()
+        for class_name in selected_classes:
+            fig.add_trace(go.Scatter(x=data.index, y=data[class_name], mode='lines', name=class_name))
+        fig.update_layout(title="Class Counts Over Time", xaxis_title="Time", yaxis_title="Count")
+        st.plotly_chart(fig)
 
-# --- Ecology Metrics ---
+elif plot_type == "Environmental Variables":
+    selected_env_vars = st.multiselect("Select Environmental Variables to Plot", env_vars, default=env_vars[:min(3, len(env_vars))])
+    if selected_env_vars:
+        fig = go.Figure()
+        for var in selected_env_vars:
+            fig.add_trace(go.Scatter(x=data.index, y=data[var], mode='lines', name=var))
+        fig.update_layout(title="Environmental Variables Over Time", xaxis_title="Time", yaxis_title="Value")
+        st.plotly_chart(fig)
+
+elif plot_type == "Correlation Heatmap":
+    st.subheader("Correlation Heatmap of Classes and Environmental Variables")
+    corr_data = data[class_names + env_vars].corr()
+    fig_corr = px.imshow(corr_data, labels=dict(x="Variable", y="Variable", color="Correlation"), title="Correlation Heatmap")
+    st.plotly_chart(fig_corr)
+
+elif plot_type == "ARIMA Forecasting":
+    st.subheader("ARIMA Forecasting")
+    selected_var = st.selectbox("Select Variable for Forecasting", class_names + env_vars)
+    try:
+        from statsmodels.tsa.arima.model import ARIMA
+        ts = data[selected_var].dropna()
+        if len(ts) >= 30:
+            model_arima = ARIMA(ts, order=(5,1,0)).fit()
+            forecast = model_arima.get_forecast(steps=30)
+            forecast_index = pd.date_range(ts.index[-1], periods=30, freq='D')
+            forecast_series = forecast.predicted_mean
+            conf_int = forecast.conf_int()
+
+            fig_arima = go.Figure()
+            fig_arima.add_trace(go.Scatter(x=ts.index, y=ts, mode='lines', name='Observed'))
+            fig_arima.add_trace(go.Scatter(x=forecast_index, y=forecast_series, mode='lines', name='Forecast'))
+            fig_arima.add_trace(go.Scatter(x=forecast_index, y=conf_int.iloc[:, 0], mode='lines', line=dict(color='gray'), name='Lower CI'))
+            fig_arima.add_trace(go.Scatter(x=forecast_index, y=conf_int.iloc[:, 1], mode='lines', line=dict(color='gray'), name='Upper CI'))
+            fig_arima.update_layout(title=f"ARIMA Forecast: {selected_var}", xaxis_title="Time", yaxis_title="Value")
+            st.plotly_chart(fig_arima)
+        else:
+            st.warning("Not enough data for ARIMA forecast (need at least 30 data points)")
+    except Exception as e:
+        st.error(f"Error performing ARIMA forecasting: {e}")
+
+elif plot_type == "Anomaly Detection":
+    st.subheader("Anomaly Detection")
+    selected_var = st.selectbox("Select Variable for Anomaly Detection", class_names + env_vars)
+    window_size = st.slider("Rolling Window Size", min_value=5, max_value=90, value=30)
+    z_threshold = st.slider("Z-Score Threshold", min_value=1.0, max_value=5.0, value=3.0, step=0.1)
+
+    # Scale the data
+    scaler = StandardScaler()
+    data['scaled_value'] = scaler.fit_transform(data[[selected_var]])
+
+    # Calculate rolling mean and standard deviation
+    data['rolling_mean'] = data['scaled_value'].rolling(window=window_size, center=True).mean()
+    data['rolling_std'] = data['scaled_value'].rolling(window=window_size, center=True).std()
+
+    # Calculate Z-scores
+    data['z_score'] = np.abs((data['scaled_value'] - data['rolling_mean']) / data['rolling_std'])
+
+    # Identify anomalies
+    anomalies = data[data['z_score'] > z_threshold]
+
+    # Plotting
+    fig_anom = go.Figure()
+    fig_anom.add_trace(go.Scatter(x=data.index, y=data['scaled_value'], mode='lines', name='Scaled Value'))
+    fig_anom.add_trace(go.Scatter(x=data.index, y=data['rolling_mean'], mode='lines', name='Rolling Mean'))
+    fig_anom.add_trace(go.Scatter(x=anomalies.index, y=anomalies['scaled_value'], mode='markers', marker=dict(color='red', size=10), name='Anomalies'))
+    fig_anom.update_layout(title=f"Anomaly Detection for {selected_var}", xaxis_title="Time", yaxis_title="Scaled Value")
+    st.plotly_chart(fig_anom)
+
+# --- Additional Analyses ---
+st.subheader("Additional Analyses")
+
+# --- Ecological Metrics ---
 st.subheader("Ecology Metrics")
 col1, col2 = st.columns(2)
 with col1:
     st.write("Total Counts by Class:")
-    total_counts = data.groupby('class_name')['animal_count'].sum()
+    total_counts = data[class_names].sum()
     st.write(total_counts)
-with col2:
-    st.write("Average Confidence by Class:")
-    average_confidences = data.groupby('class_name')['confidence'].mean()
-    st.write(average_confidences)
+# with col2: # Removed confidence
+#     st.write("Average Confidence by Class:")
+#     average_confidences = data.groupby('class_name')['confidence'].mean()
+#     st.write(average_confidences)
 
 # --- Ecological Metrics Plot ---
 st.subheader("Ecological Metrics Over Time")
 
 # Create pivot table for species counts
 df_ecol = data.copy()
-df_ecol['date'] = pd.to_datetime(df_ecol['timestamp']).dt.date
-species_pivot = df_ecol.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
+df_ecol['date'] = df_ecol.index.date
+species_pivot = df_ecol.groupby(['date'])[class_names].sum()
 
 # Initialize the diversity metrics DataFrame with basic counts
 diversity_metrics = pd.DataFrame(index=species_pivot.index)
@@ -373,16 +377,16 @@ st.subheader("Per Class Graphs")
 
 from plotly.subplots import make_subplots  # Import make_subplots
 
-unique_classes = data['class_name'].unique()
+unique_classes = class_names
 num_classes = len(unique_classes)
 
 # Create subplots: one row per unique class, shared x-axis
 fig_class = make_subplots(rows=num_classes, cols=1, subplot_titles=unique_classes, shared_xaxes=True)
 
 for i, class_name in enumerate(unique_classes):
-    class_data = data[data['class_name'] == class_name]
+    class_data = data[class_name]
     fig_class.add_trace(
-        go.Scatter(x=class_data['timestamp'], y=class_data['animal_count'], mode='lines', name=class_name),
+        go.Scatter(x=data.index, y=class_data, mode='lines', name=class_name),
         row=i+1, col=1
     )
 
@@ -401,8 +405,8 @@ st.subheader("Interspecies Occurrence Correlation Heatmap")
 try:
     # Create a daily pivot table of animal counts for each species.
     species_daily = data.copy()
-    species_daily['date'] = pd.to_datetime(species_daily['timestamp']).dt.date
-    species_pivot = species_daily.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
+    species_daily['date'] = species_daily.index.date
+    species_pivot = species_daily.groupby(['date'])[class_names].sum()
     # Compute the correlation matrix among species.
     corr_species = species_pivot.corr()
     # Plot the correlation heatmap with increased size.
@@ -421,23 +425,21 @@ except Exception as e:
 st.subheader("Per Species ARIMA Forecasting")
 from statsmodels.tsa.arima.model import ARIMA  # Ensure ARIMA is imported
 
-unique_species = data['class_name'].unique()
+unique_species = class_names
 for species in unique_species:
     try:
         # Group by date for the species and sum animal counts
-        df_species = data[data['class_name'] == species].copy()
-        df_species['date'] = pd.to_datetime(df_species['timestamp']).dt.date
-        ts_species = df_species.groupby('date')['animal_count'].sum().dropna()
-        if len(ts_species) < 10:
+        df_species = data[species].dropna()
+        if len(df_species) < 10:
             st.write(f"Not enough data for ARIMA forecast for species: {species}")
             continue
-        model_arima_species = ARIMA(ts_species, order=(1,1,1)).fit()
+        model_arima_species = ARIMA(df_species, order=(1,1,1)).fit()
         forecast_species = model_arima_species.get_forecast(steps=10)
-        forecast_index_species = pd.date_range(pd.to_datetime(ts_species.index[-1]), periods=10, freq='D')
+        forecast_index_species = pd.date_range(pd.to_datetime(df_species.index[-1]), periods=10, freq='D')
         forecast_series_species = forecast_species.predicted_mean
         conf_int_species = forecast_species.conf_int()
         fig_species = go.Figure()
-        fig_species.add_trace(go.Scatter(x=ts_species.index, y=ts_species, mode='lines', name='Observed'))
+        fig_species.add_trace(go.Scatter(x=df_species.index, y=df_species, mode='lines', name='Observed'))
         fig_species.add_trace(go.Scatter(x=forecast_index_species, y=forecast_series_species, mode='lines', name='Forecast'))
         fig_species.add_trace(go.Scatter(
             x=forecast_index_species, y=conf_int_species.iloc[:, 0],
@@ -496,7 +498,7 @@ else:
 # --- Species Accumulation and Rarefaction ---
 st.subheader("Species Accumulation Curve")
 # Using species_daily from earlier; create a pivot table per date.
-species_pivot = species_daily.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
+species_pivot = species_daily.groupby(['date'])[class_names].sum()
 dates_sorted = sorted(species_pivot.index)
 cumulative_species = []
 species_set = set()
@@ -536,24 +538,22 @@ st.plotly_chart(fig_pcoa)
 # --- Interactive Per Class ARIMA Forecasting ---
 st.subheader("Interactive Per Class ARIMA Forecasting")
 # Let user select a species (class) to generate its ARIMA forecast
-unique_species = data['class_name'].unique()
+unique_species = class_names
 selected_arima_class = st.selectbox("Select a Class for ARIMA Forecast", unique_species)
 if st.button("Generate ARIMA Forecast for Selected Class"):
     try:
-        df_species = data[data['class_name'] == selected_arima_class].copy()
-        df_species['date'] = pd.to_datetime(df_species['timestamp']).dt.date
-        ts_species = df_species.groupby('date')['animal_count'].sum().dropna()
-        if len(ts_species) < 10:
+        df_species = data[selected_arima_class].dropna()
+        if len(df_species) < 10:
             st.write(f"Not enough data for ARIMA forecast for species: {selected_arima_class}")
         else:
             from statsmodels.tsa.arima.model import ARIMA
-            model_arima_species = ARIMA(ts_species, order=(1,1,1)).fit()
+            model_arima_species = ARIMA(df_species, order=(1,1,1)).fit()
             forecast_species = model_arima_species.get_forecast(steps=10)
-            forecast_index_species = pd.date_range(pd.to_datetime(ts_species.index[-1]), periods=10, freq='D')
+            forecast_index_species = pd.date_range(pd.to_datetime(df_species.index[-1]), periods=10, freq='D')
             forecast_series_species = forecast_species.predicted_mean
             conf_int_species = forecast_species.conf_int()
             fig_species = go.Figure()
-            fig_species.add_trace(go.Scatter(x=ts_species.index, y=ts_species, mode='lines', name='Observed'))
+            fig_species.add_trace(go.Scatter(x=df_species.index, y=df_species, mode='lines', name='Observed'))
             fig_species.add_trace(go.Scatter(x=forecast_index_species, y=forecast_series_species, mode='lines', name='Forecast'))
             fig_species.add_trace(go.Scatter(
                 x=forecast_index_species, y=conf_int_species.iloc[:, 0],
@@ -1085,27 +1085,27 @@ z_threshold = st.slider("Z-Score Threshold", min_value=1.0, max_value=5.0, value
 
 # Aggregate data by date
 daily_counts = data.copy()
-daily_counts['date'] = pd.to_datetime(daily_counts['timestamp']).dt.date
-daily_agg = daily_counts.groupby('date')['animal_count'].sum().reset_index()
+daily_counts['date'] = pd.to_datetime(daily_counts.index).date
+daily_agg = daily_counts.groupby('date')[class_names].sum().reset_index()
 daily_agg['date'] = pd.to_datetime(daily_agg['date'])
 daily_agg.sort_values('date', inplace=True)
 
 # Compute rolling statistics
-daily_agg['rolling_mean'] = daily_agg['animal_count'].rolling(window=window_size, min_periods=1, center=True).mean()
-daily_agg['rolling_std'] = daily_agg['animal_count'].rolling(window=window_size, min_periods=1, center=True).std().fillna(0)
+daily_agg['rolling_mean'] = daily_agg[class_names].rolling(window=window_size, min_periods=1, center=True).mean()
+daily_agg['rolling_std'] = daily_agg[class_names].rolling(window=window_size, min_periods=1, center=True).std().fillna(0)
 
 # Calculate z-scores and flag anomalies
-daily_agg['z_score'] = (daily_agg['animal_count'] - daily_agg['rolling_mean']) / daily_agg['rolling_std']
+daily_agg['z_score'] = (daily_agg[class_names] - daily_agg['rolling_mean']) / daily_agg['rolling_std']
 anomalies = daily_agg[abs(daily_agg['z_score']) > z_threshold]
 
 # Plotting the results
 fig_anom = go.Figure()
-fig_anom.add_trace(go.Scatter(x=daily_agg['date'], y=daily_agg['animal_count'],
+fig_anom.add_trace(go.Scatter(x=daily_agg['date'], y=daily_agg[class_names],
                               mode='lines', name='Daily Count'))
 fig_anom.add_trace(go.Scatter(x=daily_agg['date'], y=daily_agg['rolling_mean'],
                               mode='lines', name='Rolling Mean'))
 if not anomalies.empty:
-    fig_anom.add_trace(go.Scatter(x=anomalies['date'], y=anomalies['animal_count'],
+    fig_anom.add_trace(go.Scatter(x=anomalies['date'], y=anomalies[class_names],
                                   mode='markers', marker=dict(color='red', size=10),
                                   name='Anomaly'))
 fig_anom.update_layout(title="Anomaly Detection in Daily Animal Counts",
@@ -1113,7 +1113,7 @@ fig_anom.update_layout(title="Anomaly Detection in Daily Animal Counts",
                       template='plotly_white')
 st.plotly_chart(fig_anom)
 st.write("Anomalous Days Detected:")
-st.write(anomalies[['date', 'animal_count', 'z_score']])
+st.write(anomalies[['date', class_names, 'z_score']])
 
 # --- Plain Language Summary ---
 st.markdown("## Plain Language Summary")
