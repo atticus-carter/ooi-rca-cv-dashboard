@@ -384,10 +384,13 @@ if 'Timestamp' in data.columns:
         y = data[target].loc[X.index]
         dt = DecisionTreeRegressor(random_state=42, max_depth=5)
         dt.fit(X, y)
-        # Increased figure size and DPI for higher resolution
-        fig, ax = plt.subplots(figsize=(20, 15), dpi=300)
-        plot_tree(dt, feature_names=predictors, filled=True, ax=ax, fontsize=14)
-        plt.tight_layout() # Ensure text doesn't overlap
+        # Adjust figure size and spacing for better readability
+        fig, ax = plt.subplots(figsize=(25, 10), dpi=300)
+        plot_tree(dt, feature_names=predictors, filled=True, ax=ax, 
+                 fontsize=12, proportion=1.5, precision=2, 
+                 node_ids=True, max_depth=4)
+        plt.margins(x=0.01)  # Reduce horizontal margins
+        plt.tight_layout(pad=1.0)  # Add padding around the plot
         st.pyplot(fig)
         st.write("Plain Language Summary: The decision tree segments the data based on the environmental predictors to explain variations in the target species. The tree structure reflects the hierarchy of variable splits and their relative importance.")
         
