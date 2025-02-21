@@ -12,6 +12,7 @@ from scipy.spatial.distance import pdist, squareform
 import networkx as nx
 import ruptures
 from st_files_connection import FilesConnection
+from utils import load_local_files, load_uploaded_files
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Ecological Metrics", layout="wide")
@@ -20,29 +21,8 @@ st.title("Ecological Metrics")
 # Initialize connection for file loading
 conn = st.connection('s3', type=FilesConnection)
 
-# --- Data Loading Functions ---
-def load_local_files(base_dir, selected_csvs):
-    dfs = []
-    for csv_file in selected_csvs:
-        file_path = os.path.join(base_dir, csv_file)
-        try:
-            df = pd.read_csv(file_path)
-            df['source_file'] = csv_file
-            dfs.append(df)
-        except Exception as e:
-            st.error(f"Error reading {csv_file}: {e}")
-    return dfs
-
-def load_uploaded_files(uploaded_files):
-    dfs = []
-    for uploaded_file in uploaded_files:
-        try:
-            df = pd.read_csv(uploaded_file)
-            df['source_file'] = uploaded_file.name
-            dfs.append(df)
-        except Exception as e:
-            st.error(f"Error reading {uploaded_file.name}: {e}")
-    return dfs
+# --- Shared Data Loading Functions ---
+# Note: These functions are identical across pages and could be moved to a utils.py file
 
 # --- Sidebar Controls ---
 with st.sidebar:
@@ -88,7 +68,7 @@ metric_type = st.selectbox(
      "Network Analysis", "Change Point Analysis"]
 )
 
-# --- Diversity Indices ---
+# --- Ecological Metrics Specific Functions ---
 def calculate_diversity_indices(df):
     total = df.sum()
     props = df[df > 0] / total
@@ -106,6 +86,7 @@ def calculate_diversity_indices(df):
         'Evenness': evenness
     })
 
+# --- Metric-Specific Visualizations ---
 if metric_type == "Diversity Indices":
     st.subheader("Diversity Indices Over Time")
     
@@ -120,7 +101,6 @@ if metric_type == "Diversity Indices":
     fig.update_layout(title="Diversity Indices Over Time", xaxis_title="Date", yaxis_title="Index Value")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- Species Accumulation ---
 elif metric_type == "Species Accumulation":
     st.subheader("Species Accumulation Curve")
     
@@ -142,7 +122,6 @@ elif metric_type == "Species Accumulation":
                      yaxis_title="Cumulative Species Count")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- Community Analysis ---
 elif metric_type == "Community Analysis":
     st.subheader("Community Composition Analysis")
     
@@ -166,7 +145,6 @@ elif metric_type == "Community Analysis":
                      title="NMDS Plot of Community Composition")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- Network Analysis ---
 elif metric_type == "Network Analysis":
     st.subheader("Species Co-occurrence Network")
     
@@ -208,7 +186,6 @@ elif metric_type == "Network Analysis":
                          showlegend=False, height=600)
         st.plotly_chart(fig, use_container_width=True)
 
-# --- Change Point Analysis ---
 elif metric_type == "Change Point Analysis":
     st.subheader("Community Change Point Detection")
     

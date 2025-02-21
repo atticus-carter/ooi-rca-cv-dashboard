@@ -6,6 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from st_files_connection import FilesConnection
+from utils import load_local_files, load_uploaded_files
 
 # Initialize connection for file loading
 conn = st.connection('s3', type=FilesConnection)
@@ -13,30 +14,6 @@ conn = st.connection('s3', type=FilesConnection)
 # --- Page Configuration ---
 st.set_page_config(page_title="Time Series Analysis", layout="wide")
 st.title("Time Series Analysis")
-
-# --- Data Loading Functions ---
-def load_local_files(base_dir, selected_csvs):
-    dfs = []
-    for csv_file in selected_csvs:
-        file_path = os.path.join(base_dir, csv_file)
-        try:
-            df = pd.read_csv(file_path)
-            df['source_file'] = csv_file
-            dfs.append(df)
-        except Exception as e:
-            st.error(f"Error reading {csv_file}: {e}")
-    return dfs
-
-def load_uploaded_files(uploaded_files):
-    dfs = []
-    for uploaded_file in uploaded_files:
-        try:
-            df = pd.read_csv(uploaded_file)
-            df['source_file'] = uploaded_file.name
-            dfs.append(df)
-        except Exception as e:
-            st.error(f"Error reading {uploaded_file.name}: {e}")
-    return dfs
 
 # --- Sidebar Controls ---
 with st.sidebar:
@@ -110,9 +87,21 @@ def plot_cluster_analysis():
                            var_name='Cluster Type',
                            value_name='Count')
     
-    fig = px.line(cluster_data, x='timestamp', y='Count',
-                  color='Cluster Type', title="Cluster Analysis Over Time")
-    return fig
+    fig_clusters = go.Figure()
+    for col in cluster_cols:
+        fig_clusters.add_trace(go.Bar(
+            name=col,
+            x=cluster_data['timestamp'],
+            y=cluster_data['Count']
+        ))
+
+    fig_clusters.update_layout(
+        barmode='stack',
+        title="Cluster Composition Over Time",
+        xaxis_title="Time",
+        yaxis_title="Count"
+    )
+    return fig_clusters
 
 # --- Render Visualizations ---
 if analysis_type == "Basic Time Series":
