@@ -11,7 +11,6 @@ import pymannkendall as mk
 from scipy.spatial.distance import pdist, squareform
 import networkx as nx
 import ruptures
-from st_files_connection import FilesConnection
 from scripts.utils import load_local_files, load_uploaded_files
 
 # --- Page Configuration ---
@@ -19,7 +18,6 @@ st.set_page_config(page_title="Ecological Metrics", layout="wide")
 st.title("Ecological Metrics")
 
 # Initialize connection for file loading
-conn = st.connection('s3', type=FilesConnection)
 
 # --- Shared Data Loading Functions ---
 # Note: These functions are identical across pages and could be moved to a utils.py file

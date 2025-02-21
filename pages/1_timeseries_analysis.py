@@ -5,11 +5,7 @@ import glob
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from st_files_connection import FilesConnection
 from scripts.utils import load_local_files, load_uploaded_files
-
-# Initialize connection for file loading
-conn = st.connection('s3', type=FilesConnection)
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Time Series Analysis", layout="wide")
