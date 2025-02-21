@@ -43,83 +43,86 @@ if 'class_name' in data.columns:
     data['timestamp'] = pd.to_datetime(data['timestamp'] if 'timestamp' in data.columns 
                                      else data['date'] + ' ' + data.get('time', '00:00:00'))
 
-# --- Analysis Options ---
-st.header("Analysis Options")
-analysis_type = st.selectbox("Select Analysis Type", 
-                           ["Basic Time Series", 
-                            "Class Distribution", 
-                            "Confidence Distribution",
-                            "Cluster Analysis"])
+    # --- Analysis Options ---
+    st.header("Analysis Options")
+    analysis_type = st.selectbox("Select Analysis Type", 
+                               ["Basic Time Series", 
+                                "Class Distribution", 
+                                "Confidence Distribution",
+                                "Cluster Analysis"])
 
-# --- Visualization Functions ---
-def plot_basic_timeseries():
-    fig = px.line(data, x='timestamp', y='animal_count', 
-                  color='class_name', title="Animal Counts Over Time")
-    fig.update_layout(legend_title="Species")
-    return fig
+    # --- Visualization Functions ---
+    def plot_basic_timeseries():
+        fig = px.line(data, x='timestamp', y='animal_count', 
+                      color='class_name', title="Animal Counts Over Time")
+        fig.update_layout(legend_title="Species")
+        return fig
 
-def plot_class_distribution():
-    class_counts = data.groupby('class_name')['animal_count'].sum().reset_index()
-    fig = px.bar(class_counts, x='class_name', y='animal_count', 
-                 title="Total Counts by Class")
-    fig.update_layout(xaxis_title="Species", yaxis_title="Count")
-    return fig
+    def plot_class_distribution():
+        class_counts = data.groupby('class_name')['animal_count'].sum().reset_index()
+        fig = px.bar(class_counts, x='class_name', y='animal_count', 
+                     title="Total Counts by Class")
+        fig.update_layout(xaxis_title="Species", yaxis_title="Count")
+        return fig
 
-def plot_confidence_distribution():
-    fig = px.histogram(data, x='confidence', nbins=50,
-                      title="Confidence Score Distribution")
-    fig.update_layout(xaxis_title="Confidence Score", 
-                     yaxis_title="Count")
-    return fig
+    def plot_confidence_distribution():
+        fig = px.histogram(data, x='confidence', nbins=50,
+                          title="Confidence Score Distribution")
+        fig.update_layout(xaxis_title="Confidence Score", 
+                         yaxis_title="Count")
+        return fig
 
-def plot_cluster_analysis():
-    if not any("Cluster" in col for col in data.columns):
-        st.warning("No cluster data available in the selected files.")
-        return None
-    
-    cluster_cols = [col for col in data.columns if "Cluster" in col]
-    cluster_data = data.melt(id_vars=['timestamp'], 
-                           value_vars=cluster_cols,
-                           var_name='Cluster Type',
-                           value_name='Count')
-    
-    fig_clusters = go.Figure()
-    for col in cluster_cols:
-        fig_clusters.add_trace(go.Bar(
-            name=col,
-            x=cluster_data['timestamp'],
-            y=cluster_data['Count']
-        ))
+    def plot_cluster_analysis():
+        if not any("Cluster" in col for col in data.columns):
+            st.warning("No cluster data available in the selected files.")
+            return None
+        
+        cluster_cols = [col for col in data.columns if "Cluster" in col]
+        cluster_data = data.melt(id_vars=['timestamp'], 
+                               value_vars=cluster_cols,
+                               var_name='Cluster Type',
+                               value_name='Count')
+        
+        fig_clusters = go.Figure()
+        for col in cluster_cols:
+            fig_clusters.add_trace(go.Bar(
+                name=col,
+                x=cluster_data['timestamp'],
+                y=cluster_data['Count']
+            ))
 
-    fig_clusters.update_layout(
-        barmode='stack',
-        title="Cluster Composition Over Time",
-        xaxis_title="Time",
-        yaxis_title="Count"
-    )
-    return fig_clusters
+        fig_clusters.update_layout(
+            barmode='stack',
+            title="Cluster Composition Over Time",
+            xaxis_title="Time",
+            yaxis_title="Count"
+        )
+        return fig_clusters
 
-# --- Render Visualizations ---
-if analysis_type == "Basic Time Series":
-    st.plotly_chart(plot_basic_timeseries(), use_container_width=True)
-    
-elif analysis_type == "Class Distribution":
-    st.plotly_chart(plot_class_distribution(), use_container_width=True)
-    
-elif analysis_type == "Confidence Distribution":
-    st.plotly_chart(plot_confidence_distribution(), use_container_width=True)
-    
-elif analysis_type == "Cluster Analysis":
-    fig = plot_cluster_analysis()
-    if fig:
-        st.plotly_chart(fig, use_container_width=True)
+    # --- Render Visualizations ---
+    if analysis_type == "Basic Time Series":
+        st.plotly_chart(plot_basic_timeseries(), use_container_width=True)
+        
+    elif analysis_type == "Class Distribution":
+        st.plotly_chart(plot_class_distribution(), use_container_width=True)
+        
+    elif analysis_type == "Confidence Distribution":
+        st.plotly_chart(plot_confidence_distribution(), use_container_width=True)
+        
+    elif analysis_type == "Cluster Analysis":
+        fig = plot_cluster_analysis()
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
 
-# --- Download Options ---
-if st.button("Download Analysis Data"):
-    csv = data.to_csv(index=False)
-    st.download_button(
-        label="Download CSV",
-        data=csv,
-        file_name=f"analysis_{selected_camera}_{analysis_type}.csv",
-        mime="text/csv"
-    )
+    # --- Download Options ---
+    if st.button("Download Analysis Data"):
+        csv = data.to_csv(index=False)
+        st.download_button(
+            label="Download CSV",
+            data=csv,
+            file_name=f"analysis_{selected_camera}_{analysis_type}.csv",
+            mime="text/csv"
+        )
+else:
+    st.warning("Please select or upload CSV files with 'class_name' to analyze.")
+    st.stop()
