@@ -387,7 +387,7 @@ if 'Timestamp' in data.columns:
         # Adjust figure size and spacing for better readability
         fig, ax = plt.subplots(figsize=(25, 10), dpi=300)
         plot_tree(dt, feature_names=predictors, filled=True, ax=ax, 
-                 fontsize=12, proportion=1.5, precision=2, 
+                 fontsize=12, precision=2, 
                  node_ids=True, max_depth=4)
         plt.margins(x=0.01)  # Reduce horizontal margins
         plt.tight_layout(pad=1.0)  # Add padding around the plot
