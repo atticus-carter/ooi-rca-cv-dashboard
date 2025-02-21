@@ -1090,30 +1090,149 @@ daily_agg = daily_counts.groupby('date')[class_names].sum().reset_index()
 daily_agg['date'] = pd.to_datetime(daily_agg['date'])
 daily_agg.sort_values('date', inplace=True)
 
-# Compute rolling statistics
-daily_agg['rolling_mean'] = daily_agg[class_names].rolling(window=window_size, min_periods=1, center=True).mean()
-daily_agg['rolling_std'] = daily_agg[class_names].rolling(window=window_size, min_periods=1, center=True).std().fillna(0)
+# Compute rolling statistics for each column separately
+for col in class_names:
+    daily_agg[f'{col}_rolling_mean'] = daily_agg[col].rolling(window=window_size, min_periods=1, center=True).mean()
+    daily_agg[f'{col}_rolling_std'] = daily_agg[col].rolling(window=window_size, min_periods=1, center=True).std().fillna(0)
+    daily_agg[f'{col}_z_score'] = (daily_agg[col] - daily_agg[f'{col}_rolling_mean']) / daily_agg[f'{col}_rolling_std']
 
-# Calculate z-scores and flag anomalies
-daily_agg['z_score'] = (daily_agg[class_names] - daily_agg['rolling_mean']) / daily_agg['rolling_std']
-anomalies = daily_agg[abs(daily_agg['z_score']) > z_threshold]
+# Identify anomalies
+anomalies = daily_agg[
+    daily_agg[[f'{col}_z_score' for col in class_names]].abs().max(axis=1) > z_threshold
+]
 
-# Plotting the results
-fig_anom = go.Figure()
-fig_anom.add_trace(go.Scatter(x=daily_agg['date'], y=daily_agg[class_names],
-                              mode='lines', name='Daily Count'))
-fig_anom.add_trace(go.Scatter(x=daily_agg['date'], y=daily_agg['rolling_mean'],
-                              mode='lines', name='Rolling Mean'))
-if not anomalies.empty:
-    fig_anom.add_trace(go.Scatter(x=anomalies['date'], y=anomalies[class_names],
-                                  mode='markers', marker=dict(color='red', size=10),
-                                  name='Anomaly'))
-fig_anom.update_layout(title="Anomaly Detection in Daily Animal Counts",
-                      xaxis_title="Date", yaxis_title="Animal Count",
-                      template='plotly_white')
-st.plotly_chart(fig_anom)
-st.write("Anomalous Days Detected:")
-st.write(anomalies[['date', class_names, 'z_score']])
+# --- Cluster Analysis ---
+st.subheader("Cluster Analysis")
+
+# Get cluster columns
+cluster_cols = [col for col in data.columns if col.startswith('Cluster')]
+if cluster_cols:
+    # Allow cluster renaming
+    st.write("Rename Clusters:")
+    cluster_names = {}
+    for col in cluster_cols:
+        new_name = st.text_input(f"Rename {col}", value=col)
+        cluster_names[col] = new_name
+
+    # Allow cluster merging
+    st.write("Merge Clusters:")
+    merge_cols = st.multiselect("Select clusters to merge", cluster_cols)
+    if merge_cols:
+        merge_name = st.text_input("Name for merged cluster", value="Merged Cluster")
+        if st.button("Merge Clusters"):
+            data[merge_name] = data[merge_cols].sum(axis=1)
+            # Update cluster columns list
+            cluster_cols = [col for col in cluster_cols if col not in merge_cols] + [merge_name]
+
+    # Create stacked bar chart of cluster percentages
+    cluster_data = data[cluster_cols].copy()
+    
+    # Calculate linear regression for each cluster
+    from scipy import stats
+    regression_results = {}
+    for col in cluster_cols:
+        slope, intercept, r_value, p_value, std_err = stats.linregress(range(len(cluster_data)), cluster_data[col])
+        regression_results[col] = {
+            'slope': slope,
+            'intercept': intercept,
+            'r_squared': r_value**2,
+            'p_value': p_value
+        }
+
+    # Plot stacked bar chart with regression lines
+    fig_clusters = go.Figure()
+    
+    # Add stacked bars
+    for col in cluster_cols:
+        fig_clusters.add_trace(go.Bar(
+            name=cluster_names.get(col, col),
+            x=data.index,
+            y=cluster_data[col],
+            stackgroup='one'
+        ))
+
+    # Add regression lines
+    for col in cluster_cols:
+        y_reg = regression_results[col]['slope'] * np.arange(len(cluster_data)) + regression_results[col]['intercept']
+        fig_clusters.add_trace(go.Scatter(
+            name=f'Regression {cluster_names.get(col, col)}',
+            x=data.index,
+            y=y_reg,
+            mode='lines',
+            line=dict(dash='dash')
+        ))
+
+    fig_clusters.update_layout(
+        title="Cluster Percentages Over Time",
+        barmode='stack',
+        yaxis_title="Percentage",
+        xaxis_title="Date"
+    )
+    st.plotly_chart(fig_clusters)
+
+    # Display regression statistics
+    st.write("Regression Statistics:")
+    reg_stats = pd.DataFrame(regression_results).transpose()
+    st.dataframe(reg_stats)
+
+# --- Environmental Data Analysis ---
+st.subheader("Environmental Data Analysis")
+
+env_vars = ['Temperature', 'Conductivity', 'Pressure', 'Salinity', 
+            'Oxygen Phase, usec', 'Oxygen Temperature Voltage', 'PressurePSI']
+
+selected_env_vars = st.multiselect("Select Environmental Variables", env_vars)
+
+if selected_env_vars:
+    # Time series plot
+    fig_env = go.Figure()
+    for var in selected_env_vars:
+        fig_env.add_trace(go.Scatter(
+            x=data.index,
+            y=data[var],
+            name=var,
+            mode='lines'
+        ))
+    fig_env.update_layout(
+        title="Environmental Variables Over Time",
+        xaxis_title="Date",
+        yaxis_title="Value"
+    )
+    st.plotly_chart(fig_env)
+
+    # Correlation matrix
+    st.subheader("Correlation Analysis")
+    corr_vars = selected_env_vars + class_names + cluster_cols
+    corr_matrix = data[corr_vars].corr()
+    
+    fig_corr = px.imshow(
+        corr_matrix,
+        labels=dict(x="Variable", y="Variable", color="Correlation"),
+        color_continuous_scale="RdBu_r"
+    )
+    st.plotly_chart(fig_corr)
+
+# --- Modified FFT Analysis ---
+st.subheader("FFT Analysis")
+# Detrend the time series
+ts_detrended = ts_decomp - np.mean(ts_decomp)
+# Compute FFT
+fft_vals = np.abs(np.fft.fft(ts_detrended))
+fft_freq = np.fft.fftfreq(len(ts_detrended), d=1)  # Assuming daily sampling
+
+# Create histogram of FFT amplitudes
+fig_fft = go.Figure()
+fig_fft.add_trace(go.Histogram(
+    x=fft_vals[fft_freq > 0],  # Only positive frequencies
+    nbinsx=30,
+    name='FFT Amplitude'
+))
+fig_fft.update_layout(
+    title="FFT Amplitude Distribution",
+    xaxis_title="Amplitude",
+    yaxis_title="Count"
+)
+st.plotly_chart(fig_fft)
 
 # --- Plain Language Summary ---
 st.markdown("## Plain Language Summary")
