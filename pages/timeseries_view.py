@@ -86,100 +86,101 @@ for col in data.columns:
     else:
         class_names.append(col)
 
-# --- Visualization Categories and Selection ---
-st.sidebar.title("Select Visualizations")
+# --- Visualization Selection ---
+st.subheader("Select Visualizations")
 
-# Group visualizations into categories
-visualization_categories = {
-    "Basic Time Series": {
-        "Individual Species Counts": "individual_counts",
+# Define visualization options
+visualization_options = {
+    "Time Series": {
+        "Individual Species Counts": "species_counts",
         "Environmental Variables": "env_vars",
-        "Correlation Heatmap": "correlation"
+        "Total Annotations": "total_annotations"
     },
-    "Statistical Analysis": {
+    "Analysis": {
+        "Correlation Heatmap": "correlation",
         "ARIMA Forecasting": "arima",
-        "Anomaly Detection": "anomaly",
-        "FFT Analysis": "fft"
+        "Species Distribution": "distribution"
     },
     "Ecological Metrics": {
         "Diversity Indices": "diversity",
         "Species Accumulation": "accumulation",
-        "Rank-Abundance Curves": "rank_abundance"
-    },
-    "Community Analysis": {
-        "Species Co-occurrence Network": "network",
-        "Change Point Detection": "change_points",
-        "Beta Diversity": "beta_diversity"
-    },
-    "Temporal Patterns": {
-        "Wavelet Analysis": "wavelet",
-        "Time-lag Analysis": "time_lag",
-        "Seasonal Decomposition": "seasonal"
+        "Community Structure": "community"
     }
 }
 
-# Create selection interface in sidebar
-selected_visualizations = {}
-for category, plots in visualization_categories.items():
-    st.sidebar.subheader(category)
-    for plot_name, plot_id in plots.items():
-        selected_visualizations[plot_id] = st.sidebar.checkbox(plot_name)
+# Create columns for visualization categories
+cols = st.columns(len(visualization_options))
+selected_viz = {}
 
-# Function to export plot as PNG
-def get_plot_download_button(fig, filename):
-    img_bytes = fig.to_image(format="png")
-    btn = st.download_button(
-        label="Download Plot as PNG",
-        data=img_bytes,
-        file_name=filename,
-        mime="image/png"
-    )
-    return btn
+# Create selection boxes for each category
+for i, (category, plots) in enumerate(visualization_options.items()):
+    with cols[i]:
+        st.write(f"**{category}**")
+        for plot_name, plot_id in plots.items():
+            selected_viz[plot_id] = st.checkbox(plot_name, key=plot_id)
 
-# --- Render Selected Visualizations ---
-if any(selected_visualizations.values()):
-    for plot_id, selected in selected_visualizations.items():
+# Add a divider
+st.markdown("---")
+
+# --- Display Selected Visualizations ---
+if any(selected_viz.values()):
+    for plot_id, selected in selected_viz.items():
         if selected:
-            st.subheader(next(name for category in visualization_categories.values() 
-                            for name, pid in category.items() if pid == plot_id))
-            
-            if plot_id == "individual_counts":
-                selected_classes = st.multiselect("Select Classes to Plot", class_names,
-                                                default=class_names[:min(5, len(class_names))])
-                if selected_classes:
+            if plot_id == "species_counts":
+                # Species selection
+                selected_species = st.multiselect(
+                    "Select Species to Plot",
+                    class_names,
+                    default=class_names[:min(5, len(class_names))]
+                )
+                if selected_species:
                     fig = go.Figure()
-                    for class_name in selected_classes:
-                        fig.add_trace(go.Scatter(x=data.index, y=data[class_name], 
-                                               mode='lines', name=class_name))
-                    fig.update_layout(title="Class Counts Over Time",
+                    for species in selected_species:
+                        fig.add_trace(go.Scatter(x=data.index, y=data[species], 
+                                               mode='lines', name=species))
+                    fig.update_layout(title="Species Counts Over Time",
                                     xaxis_title="Time", yaxis_title="Count")
                     st.plotly_chart(fig)
-                    get_plot_download_button(fig, "species_counts.png")
-
+            
             elif plot_id == "env_vars":
-                # ...similar pattern for environmental variables...
-                pass
+                # Environmental variables selection
+                selected_vars = st.multiselect(
+                    "Select Environmental Variables",
+                    env_vars,
+                    default=env_vars[:min(3, len(env_vars))]
+                )
+                if selected_vars:
+                    fig = go.Figure()
+                    for var in selected_vars:
+                        fig.add_trace(go.Scatter(x=data.index, y=data[var], 
+                                               mode='lines', name=var))
+                    fig.update_layout(title="Environmental Variables Over Time",
+                                    xaxis_title="Time", yaxis_title="Value")
+                    st.plotly_chart(fig)
 
-            # Continue with other visualization options...
-            # Each visualization section should:
-            # 1. Let users configure parameters if needed
-            # 2. Generate the plot
-            # 3. Display the plot
-            # 4. Provide download button
+            # Add other visualization options here following the same pattern
+            # ...rest of visualization code...
 
 else:
-    st.info("Please select at least one visualization from the sidebar.")
+    st.info("Select visualizations above to begin exploring the data.")
 
-# Add export options for data tables
-st.sidebar.subheader("Export Data Tables")
-if st.sidebar.button("Export Full Dataset"):
-    csv = data.to_csv(index=True)
-    st.sidebar.download_button(
-        label="Download CSV",
-        data=csv,
-        file_name="timeseries_data.csv",
-        mime="text/csv"
-    )
+# --- Export Options ---
+if any(selected_viz.values()):
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Export Data"):
+            csv = data.to_csv(index=True)
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name="timeseries_data.csv",
+                mime="text/csv"
+            )
+    with col2:
+        if st.button("Export Figures"):
+            # Add figure export functionality
+            pass
 
 # --- Additional Options ---
 st.sidebar.subheader("Display Options")
