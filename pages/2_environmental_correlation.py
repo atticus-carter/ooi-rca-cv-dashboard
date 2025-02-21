@@ -375,8 +375,8 @@ if 'Timestamp' in data.columns:
         test_result = tsastat.grangercausalitytests(data[[effect, cause]].dropna(), maxlag=maxlag, verbose=False)
         p_vals = [round(test_result[i+1][0]['ssr_ftest'][1], 3) for i in range(maxlag)]
         st.write(f"Plain Language Summary: Granger causality test p-values for lags 1 to {maxlag} are: {p_vals}. A p-value below 0.05 at any lag suggests that {cause} may help predict {effect}.")
-    
-    elif analysis_type == "Decision Tree Analysis":
+        
+        elif analysis_type == "Decision Tree Analysis":
         from sklearn.tree import DecisionTreeRegressor, plot_tree
         target = st.selectbox("Select Target Species", class_names)
         predictors = env_vars
@@ -384,11 +384,13 @@ if 'Timestamp' in data.columns:
         y = data[target].loc[X.index]
         dt = DecisionTreeRegressor(random_state=42, max_depth=5)
         dt.fit(X, y)
-        fig, ax = plt.subplots(figsize=(12, 8))
-        plot_tree(dt, feature_names=predictors, filled=True, ax=ax)
+        # Increased figure size and DPI for higher resolution
+        fig, ax = plt.subplots(figsize=(20, 15), dpi=300)
+        plot_tree(dt, feature_names=predictors, filled=True, ax=ax, fontsize=14)
+        plt.tight_layout() # Ensure text doesn't overlap
         st.pyplot(fig)
         st.write("Plain Language Summary: The decision tree segments the data based on the environmental predictors to explain variations in the target species. The tree structure reflects the hierarchy of variable splits and their relative importance.")
-    
+        
     elif analysis_type == "Scatter Matrix Analysis":
         vars_selected = st.multiselect("Select variables for scatter matrix", env_vars + class_names, default=env_vars[:3] + class_names[:1])
         if vars_selected:
