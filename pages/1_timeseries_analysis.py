@@ -50,7 +50,9 @@ if 'Timestamp' in data.columns:
     # --- Analysis Options ---
     st.header("Analysis Options")
     analysis_type = st.selectbox("Select Analysis Type", 
-                               ["Basic Time Series", 
+                               ["Basic Time Series",
+                                "Stacked Visualizations", 
+                                "Multi-class Timeline",
                                 "Class Distribution", 
                                 "Confidence Distribution",
                                 "Cluster Analysis",
@@ -111,6 +113,123 @@ if 'Timestamp' in data.columns:
             st.warning("No environmental variables found in the data.")
             return None
 
+    def plot_stacked_visualizations():
+        # Get unique class names for selection
+        available_classes = melted_data['class_name'].unique()
+        
+        # Create columns for chart type and class selection
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            chart_type = st.radio("Chart Type", ["Stacked Bar", "Stacked Area"])
+        
+        with col2:
+            selected_classes = st.multiselect(
+                "Select Classes to Include",
+                available_classes,
+                default=available_classes[:3]  # Default to first 3 classes
+            )
+        
+        if not selected_classes:
+            st.warning("Please select at least one class.")
+            return None
+
+        # Filter data for selected classes
+        filtered_data = melted_data[melted_data['class_name'].isin(selected_classes)]
+        
+        # Pivot data for stacking
+        pivot_data = filtered_data.pivot_table(
+            index='timestamp',
+            columns='class_name',
+            values='animal_count',
+            fill_value=0
+        ).reset_index()
+
+        if chart_type == "Stacked Bar":
+            fig = go.Figure()
+            for class_name in selected_classes:
+                fig.add_trace(go.Bar(
+                    name=class_name,
+                    x=pivot_data['timestamp'],
+                    y=pivot_data[class_name]
+                ))
+            fig.update_layout(
+                barmode='stack',
+                title="Stacked Species Distribution Over Time",
+                xaxis_title="Time",
+                yaxis_title="Count"
+            )
+
+        else:  # Stacked Area
+            fig = go.Figure()
+            for class_name in selected_classes:
+                fig.add_trace(go.Scatter(
+                    name=class_name,
+                    x=pivot_data['timestamp'],
+                    y=pivot_data[class_name],
+                    mode='lines',
+                    stackgroup='one'
+                ))
+            fig.update_layout(
+                title="Species Distribution Area Over Time",
+                xaxis_title="Time",
+                yaxis_title="Count"
+            )
+
+        return fig
+
+    def plot_multi_class_timeline():
+        available_classes = melted_data['class_name'].unique()
+        selected_classes = st.multiselect(
+            "Select Classes to Display",
+            available_classes,
+            default=available_classes[:5]  # Default to first 5 classes
+        )
+
+        if not selected_classes:
+            st.warning("Please select at least one class.")
+            return None
+
+        # Create subplots, one for each class
+        fig = go.Figure()
+        
+        for i, class_name in enumerate(selected_classes):
+            class_data = melted_data[melted_data['class_name'] == class_name]
+            
+            fig.add_trace(go.Scatter(
+                x=class_data['timestamp'],
+                y=class_data['animal_count'],
+                name=class_name,
+                yaxis=f'y{i+1}' if i > 0 else 'y'
+            ))
+
+        # Update layout with multiple y-axes
+        layout_updates = {
+            'title': 'Multi-class Timeline Analysis',
+            'xaxis': {'title': 'Time'},
+            'height': 100 + (len(selected_classes) * 200),  # Adjust height based on number of classes
+            'showlegend': True,
+            'grid': {'rows': len(selected_classes), 'columns': 1, 'pattern': 'independent'},
+        }
+
+        # Add separate y-axes for each class
+        for i, class_name in enumerate(selected_classes):
+            if i == 0:
+                layout_updates['yaxis'] = {
+                    'title': class_name,
+                    'domain': [(len(selected_classes)-1-i)/len(selected_classes), 
+                              (len(selected_classes)-i)/len(selected_classes)]
+                }
+            else:
+                layout_updates[f'yaxis{i+1}'] = {
+                    'title': class_name,
+                    'domain': [(len(selected_classes)-1-i)/len(selected_classes), 
+                              (len(selected_classes)-i)/len(selected_classes)]
+                }
+
+        fig.update_layout(**layout_updates)
+        return fig
+
     # --- Render Visualizations ---
     if analysis_type == "Basic Time Series":
         st.plotly_chart(plot_basic_timeseries(), use_container_width=True)
@@ -128,6 +247,16 @@ if 'Timestamp' in data.columns:
 
     elif analysis_type == "Environmental Variable Analysis":
         fig = plot_environmental_analysis()
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif analysis_type == "Stacked Visualizations":
+        fig = plot_stacked_visualizations()
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+    
+    elif analysis_type == "Multi-class Timeline":
+        fig = plot_multi_class_timeline()
         if fig:
             st.plotly_chart(fig, use_container_width=True)
 
