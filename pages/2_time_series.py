@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from st_files_connection import FilesConnection
-from ooi_rca_cv_dashboard.utils import load_local_files, load_uploaded_files
+from scripts.utils import load_local_files, load_uploaded_files
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Time Series", layout="wide")

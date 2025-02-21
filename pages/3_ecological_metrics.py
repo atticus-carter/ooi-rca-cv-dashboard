@@ -12,7 +12,7 @@ from scipy.spatial.distance import pdist, squareform
 import networkx as nx
 import ruptures
 from st_files_connection import FilesConnection
-from ooi_rca_cv_dashboard.utils import load_local_files, load_uploaded_files
+from scripts.utils import load_local_files, load_uploaded_files
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Ecological Metrics", layout="wide")
