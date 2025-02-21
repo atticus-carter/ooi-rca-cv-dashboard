@@ -87,15 +87,47 @@ if 'Timestamp' in data.columns:
         st.plotly_chart(fig, use_container_width=True)
 
     elif plot_type == "Environmental Variables":
-        if env_vars:
+        col1, col2 = st.columns(2)
+        with col1:
             env_var = st.selectbox("Select Environmental Variable", env_vars)
-            fig = px.line(data, 
-                          x='timestamp', 
-                          y=env_var,
-                          title=f"{env_var} Over Time")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("No environmental variables found in the data.")
+        with col2:
+            rolling_window = st.slider("Rolling Average Window", 1, 100, 10)
+
+        # Create environmental variable plot with rolling average
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=data['timestamp'],
+            y=data[env_var],
+            name=f'Raw {env_var}',
+            mode='lines',
+            line=dict(color='lightgray')
+        ))
+        
+        # Add rolling average
+        rolling_avg = data[env_var].rolling(window=rolling_window).mean()
+        fig.add_trace(go.Scatter(
+            x=data['timestamp'],
+            y=rolling_avg,
+            name=f'{env_var} ({rolling_window}-point rolling avg)',
+            line=dict(color='blue')
+        ))
+        
+        fig.update_layout(title=f"{env_var} Over Time")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Add correlation analysis
+        st.subheader("Correlation with Species Counts")
+        correlations = pd.DataFrame()
+        for species in class_names:
+            corr = data[env_var].corr(data[species])
+            correlations.loc[species, 'Correlation'] = corr
+        
+        correlations = correlations.sort_values('Correlation', ascending=False)
+        fig_corr = px.bar(correlations, 
+                         x=correlations.index, 
+                         y='Correlation',
+                         title=f"Species Correlation with {env_var}")
+        st.plotly_chart(fig_corr, use_container_width=True)
 
     elif plot_type == "Cluster Composition":
         if cluster_cols:
@@ -136,11 +168,6 @@ if 'Timestamp' in data.columns:
         st.subheader("Total Counts by Class")
         class_totals = data_filtered.groupby('class_name')['animal_count'].sum().sort_values(ascending=False)
         st.dataframe(class_totals)
-
-    with col2:
-        st.subheader("Average Confidence by Class")
-        confidence_stats = data_filtered.groupby('class_name')['confidence'].agg(['mean', 'std']).round(3)
-        st.dataframe(confidence_stats)
 
     # --- Download Options ---
     st.header("Download Data")

@@ -30,17 +30,22 @@ def load_uploaded_files(uploaded_files):
     return dfs
 
 def extract_data_columns(df):
-    """Extract class names, cluster columns, and environmental variables."""
+    """Extract class names, cluster columns, and environmental variables from the new format."""
     class_names = []
     cluster_cols = []
     env_vars = []
     
-    for col in df.columns:
-        if col.lower().startswith("cluster"):
+    # Skip 'File' and 'Timestamp' columns
+    for col in df.columns[2:]:
+        if col.startswith('Cluster'):
             cluster_cols.append(col)
-        elif col in ["Temperature","Conductivity","Pressure","Salinity","Oxygen Phase, usec","Oxygen Temperature Voltage","PressurePSI"]:
-            env_vars.append(col)
-        elif col not in ['File', 'Timestamp', 'date', 'time']:
-            class_names.append(col)
-            
+            break  # Stop adding class names once we hit clusters
+        class_names.append(col)
+    
+    # Known environmental variables
+    env_vars = [
+        "Temperature", "Conductivity", "Pressure", "Salinity",
+        "Oxygen Phase, usec", "Oxygen Temperature Voltage", "PressurePSI"
+    ]
+    
     return class_names, cluster_cols, env_vars
