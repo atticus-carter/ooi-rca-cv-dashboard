@@ -376,7 +376,7 @@ if 'Timestamp' in data.columns:
         p_vals = [round(test_result[i+1][0]['ssr_ftest'][1], 3) for i in range(maxlag)]
         st.write(f"Plain Language Summary: Granger causality test p-values for lags 1 to {maxlag} are: {p_vals}. A p-value below 0.05 at any lag suggests that {cause} may help predict {effect}.")
         
-        elif analysis_type == "Decision Tree Analysis":
+    elif analysis_type == "Decision Tree Analysis":
         from sklearn.tree import DecisionTreeRegressor, plot_tree
         target = st.selectbox("Select Target Species", class_names)
         predictors = env_vars
