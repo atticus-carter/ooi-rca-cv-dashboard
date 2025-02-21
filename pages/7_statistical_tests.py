@@ -10,13 +10,15 @@ from scripts.utils import load_local_files, load_uploaded_files
 st.set_page_config(page_title="Interactive Statistical Tests", layout="wide")
 st.title("Interactive Statistical Tests")
 
-# --- Sidebar Data Selection ---
+# --- Sidebar Controls ---
 with st.sidebar:
     st.header("Data Selection")
+    camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
+    selected_camera = st.selectbox("Select Camera", camera_names)
+    
     uploaded_files = st.file_uploader("Upload CSV Files", type=["csv"], accept_multiple_files=True)
     
-    # Option to select local CSV files from a designated folder (if available)
-    base_dir = os.path.join("stat_tests_data")
+    base_dir = os.path.join("timeseries", selected_camera)
     csv_files = glob.glob(os.path.join(base_dir, "**", "*.csv"), recursive=True)
     csv_files = [os.path.relpath(f, base_dir) for f in csv_files]
     selected_csvs = st.multiselect("Select CSV Files", csv_files)
