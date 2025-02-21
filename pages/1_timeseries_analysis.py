@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from st_files_connection import FilesConnection
-from utils import load_local_files, load_uploaded_files
+from ooi_rca_cv_dashboard.utils import load_local_files, load_uploaded_files
 
 # Initialize connection for file loading
 conn = st.connection('s3', type=FilesConnection)
