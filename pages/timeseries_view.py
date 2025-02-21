@@ -86,6 +86,108 @@ for col in data.columns:
     else:
         class_names.append(col)
 
+# --- Visualization Categories and Selection ---
+st.sidebar.title("Select Visualizations")
+
+# Group visualizations into categories
+visualization_categories = {
+    "Basic Time Series": {
+        "Individual Species Counts": "individual_counts",
+        "Environmental Variables": "env_vars",
+        "Correlation Heatmap": "correlation"
+    },
+    "Statistical Analysis": {
+        "ARIMA Forecasting": "arima",
+        "Anomaly Detection": "anomaly",
+        "FFT Analysis": "fft"
+    },
+    "Ecological Metrics": {
+        "Diversity Indices": "diversity",
+        "Species Accumulation": "accumulation",
+        "Rank-Abundance Curves": "rank_abundance"
+    },
+    "Community Analysis": {
+        "Species Co-occurrence Network": "network",
+        "Change Point Detection": "change_points",
+        "Beta Diversity": "beta_diversity"
+    },
+    "Temporal Patterns": {
+        "Wavelet Analysis": "wavelet",
+        "Time-lag Analysis": "time_lag",
+        "Seasonal Decomposition": "seasonal"
+    }
+}
+
+# Create selection interface in sidebar
+selected_visualizations = {}
+for category, plots in visualization_categories.items():
+    st.sidebar.subheader(category)
+    for plot_name, plot_id in plots.items():
+        selected_visualizations[plot_id] = st.sidebar.checkbox(plot_name)
+
+# Function to export plot as PNG
+def get_plot_download_button(fig, filename):
+    img_bytes = fig.to_image(format="png")
+    btn = st.download_button(
+        label="Download Plot as PNG",
+        data=img_bytes,
+        file_name=filename,
+        mime="image/png"
+    )
+    return btn
+
+# --- Render Selected Visualizations ---
+if any(selected_visualizations.values()):
+    for plot_id, selected in selected_visualizations.items():
+        if selected:
+            st.subheader(next(name for category in visualization_categories.values() 
+                            for name, pid in category.items() if pid == plot_id))
+            
+            if plot_id == "individual_counts":
+                selected_classes = st.multiselect("Select Classes to Plot", class_names,
+                                                default=class_names[:min(5, len(class_names))])
+                if selected_classes:
+                    fig = go.Figure()
+                    for class_name in selected_classes:
+                        fig.add_trace(go.Scatter(x=data.index, y=data[class_name], 
+                                               mode='lines', name=class_name))
+                    fig.update_layout(title="Class Counts Over Time",
+                                    xaxis_title="Time", yaxis_title="Count")
+                    st.plotly_chart(fig)
+                    get_plot_download_button(fig, "species_counts.png")
+
+            elif plot_id == "env_vars":
+                # ...similar pattern for environmental variables...
+                pass
+
+            # Continue with other visualization options...
+            # Each visualization section should:
+            # 1. Let users configure parameters if needed
+            # 2. Generate the plot
+            # 3. Display the plot
+            # 4. Provide download button
+
+else:
+    st.info("Please select at least one visualization from the sidebar.")
+
+# Add export options for data tables
+st.sidebar.subheader("Export Data Tables")
+if st.sidebar.button("Export Full Dataset"):
+    csv = data.to_csv(index=True)
+    st.sidebar.download_button(
+        label="Download CSV",
+        data=csv,
+        file_name="timeseries_data.csv",
+        mime="text/csv"
+    )
+
+# --- Additional Options ---
+st.sidebar.subheader("Display Options")
+show_stats = st.sidebar.checkbox("Show Summary Statistics")
+if show_stats:
+    st.subheader("Summary Statistics")
+    st.write(data.describe())
+
 # --- Plotting Options ---
 plot_type = st.selectbox("Select Plot Type", ["Individual Classes", "Environmental Variables", "Correlation Heatmap", "ARIMA Forecasting", "Anomaly Detection"])
 
