@@ -11,7 +11,7 @@ import pymannkendall as mk
 from scipy.spatial.distance import pdist, squareform
 import networkx as nx
 import ruptures
-from scripts.utils import load_local_files, load_uploaded_files
+from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Ecological Metrics", layout="wide")
@@ -49,14 +49,15 @@ if not dfs:
 data = pd.concat(dfs, ignore_index=True)
 
 # --- Data Preprocessing ---
-if 'class_name' in data.columns:
-    data = data[data['class_name'] != 'bubble']
-    data['timestamp'] = pd.to_datetime(data['timestamp'] if 'timestamp' in data.columns 
-                                     else data['date'] + ' ' + data.get('time', '00:00:00'))
+if 'Timestamp' in data.columns:
+    # Extract data columns
+    class_names, cluster_cols, env_vars = extract_data_columns(data)
+    
+    data['timestamp'] = pd.to_datetime(data['Timestamp'])
     data['date'] = data['timestamp'].dt.date
     
     # Create pivot table for species counts
-    species_pivot = data.groupby(['date', 'class_name'])['animal_count'].sum().unstack(fill_value=0)
+    species_pivot = data.groupby(['date'])[class_names].sum()
 
     # --- Ecological Metrics Options ---
     st.header("Ecological Metrics Analysis")
@@ -209,6 +210,29 @@ if 'class_name' in data.columns:
                          yaxis_title="Total Abundance")
         st.plotly_chart(fig, use_container_width=True)
 
+    # --- Environmental Correlation Analysis ---
+    st.header("Environmental Correlation Analysis")
+    if env_vars:
+        env_var = st.selectbox("Select Environmental Variable", env_vars)
+        
+        # Calculate correlation with diversity indices
+        if 'diversity_indices' in locals():
+            env_data = data.groupby('date')[env_var].mean()
+            combined_data = diversity_indices.join(env_data, how='inner')
+            
+            correlations = combined_data.corr()[env_var].drop(env_var)
+            st.write("Correlations with Diversity Indices:")
+            st.dataframe(correlations)
+            
+            # Plot scatter plot
+            fig = px.scatter(combined_data, x=env_var, y=correlations.index,
+                             title=f"Correlation between {env_var} and Diversity Indices")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("Diversity indices not calculated. Please select 'Diversity Indices' analysis first.")
+    else:
+        st.warning("No environmental variables found in the data.")
+
     # --- Download Options ---
     st.header("Download Results")
     if st.button("Download Analysis Results"):
@@ -226,5 +250,5 @@ if 'class_name' in data.columns:
             mime="text/csv"
         )
 else:
-    st.warning("Please select or upload CSV files with 'class_name' to analyze.")
+    st.warning("Please select or upload CSV files with 'Timestamp' to analyze.")
     st.stop()

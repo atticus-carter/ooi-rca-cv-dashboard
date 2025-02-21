@@ -5,7 +5,7 @@ import glob
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from scripts.utils import load_local_files, load_uploaded_files
+from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Time Series Analysis", layout="wide")
@@ -38,10 +38,11 @@ if not dfs:
 data = pd.concat(dfs, ignore_index=True)
 
 # --- Data Preprocessing ---
-if 'class_name' in data.columns:
-    data = data[data['class_name'] != 'bubble']
-    data['timestamp'] = pd.to_datetime(data['timestamp'] if 'timestamp' in data.columns 
-                                     else data['date'] + ' ' + data.get('time', '00:00:00'))
+if 'Timestamp' in data.columns:
+    # Extract data columns
+    class_names, cluster_cols, env_vars = extract_data_columns(data)
+    
+    data['timestamp'] = pd.to_datetime(data['Timestamp'])
 
     # --- Analysis Options ---
     st.header("Analysis Options")
@@ -49,7 +50,8 @@ if 'class_name' in data.columns:
                                ["Basic Time Series", 
                                 "Class Distribution", 
                                 "Confidence Distribution",
-                                "Cluster Analysis"])
+                                "Cluster Analysis",
+                                "Environmental Variable Analysis"])
 
     # --- Visualization Functions ---
     def plot_basic_timeseries():
@@ -66,11 +68,7 @@ if 'class_name' in data.columns:
         return fig
 
     def plot_confidence_distribution():
-        fig = px.histogram(data, x='confidence', nbins=50,
-                          title="Confidence Score Distribution")
-        fig.update_layout(xaxis_title="Confidence Score", 
-                         yaxis_title="Count")
-        return fig
+        return None
 
     def plot_cluster_analysis():
         if not any("Cluster" in col for col in data.columns):
@@ -99,6 +97,17 @@ if 'class_name' in data.columns:
         )
         return fig_clusters
 
+    def plot_environmental_analysis():
+        if env_vars:
+            env_var = st.selectbox("Select Environmental Variable", env_vars)
+            fig = px.line(data, x='timestamp', y=env_var,
+                          title=f"{env_var} Over Time")
+            fig.update_layout(xaxis_title="Time", yaxis_title=env_var)
+            return fig
+        else:
+            st.warning("No environmental variables found in the data.")
+            return None
+
     # --- Render Visualizations ---
     if analysis_type == "Basic Time Series":
         st.plotly_chart(plot_basic_timeseries(), use_container_width=True)
@@ -107,10 +116,15 @@ if 'class_name' in data.columns:
         st.plotly_chart(plot_class_distribution(), use_container_width=True)
         
     elif analysis_type == "Confidence Distribution":
-        st.plotly_chart(plot_confidence_distribution(), use_container_width=True)
+        st.write("Confidence Distribution Removed")
         
     elif analysis_type == "Cluster Analysis":
         fig = plot_cluster_analysis()
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif analysis_type == "Environmental Variable Analysis":
+        fig = plot_environmental_analysis()
         if fig:
             st.plotly_chart(fig, use_container_width=True)
 
@@ -124,5 +138,5 @@ if 'class_name' in data.columns:
             mime="text/csv"
         )
 else:
-    st.warning("Please select or upload CSV files with 'class_name' to analyze.")
+    st.warning("Please select or upload CSV files with 'Timestamp' to analyze.")
     st.stop()

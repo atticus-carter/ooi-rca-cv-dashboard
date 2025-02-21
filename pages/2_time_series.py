@@ -5,7 +5,7 @@ import glob
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from scripts.utils import load_local_files, load_uploaded_files
+from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Time Series", layout="wide")
@@ -38,15 +38,11 @@ if not dfs:
 data = pd.concat(dfs, ignore_index=True)
 
 # --- Data Preprocessing ---
-if 'class_name' in data.columns:
-    data = data[data['class_name'] != 'bubble']
-    # Handle timestamp creation
-    if 'timestamp' in data.columns:
-        data['timestamp'] = pd.to_datetime(data['timestamp'])
-    elif 'date' in data.columns and 'time' in data.columns:
-        data['timestamp'] = pd.to_datetime(data['date'] + ' ' + data['time'])
-    elif 'date' in data.columns:
-        data['timestamp'] = pd.to_datetime(data['date'])
+if 'Timestamp' in data.columns:
+    # Extract data columns
+    class_names, cluster_cols, env_vars = extract_data_columns(data)
+    
+    data['timestamp'] = pd.to_datetime(data['Timestamp'])
     data = data.sort_values('timestamp')
 
     # --- Time Series Specific Visualizations ---
@@ -57,19 +53,17 @@ if 'class_name' in data.columns:
         plot_type = st.selectbox("Select Plot Type", 
                                 ["Stacked Bar Chart", 
                                  "Stacked Area Chart", 
-                                 "Average Confidence",
+                                 "Environmental Variables",
+                                 "Cluster Composition",
                                  "Per-Class Time Series"])
 
     with col2:
-        if 'class_name' in data.columns:
-            available_classes = data['class_name'].unique()
-            selected_classes = st.multiselect("Filter Classes", 
-                                            available_classes,
-                                            default=available_classes)
-            data_filtered = data[data['class_name'].isin(selected_classes)]
-        else:
-            data_filtered = data
-            st.warning("No class information found in the data.")
+        available_classes = class_names
+        selected_classes = st.multiselect("Filter Classes", 
+                                        available_classes,
+                                        default=available_classes)
+        data_filtered = data[['timestamp'] + selected_classes]
+        data_filtered = data_filtered.melt(id_vars=['timestamp'], value_vars=selected_classes, var_name='class_name', value_name='animal_count')
 
     # --- Generate Visualizations ---
     if plot_type == "Stacked Bar Chart":
@@ -92,13 +86,27 @@ if 'class_name' in data.columns:
                       title="Species Distribution Over Time")
         st.plotly_chart(fig, use_container_width=True)
 
-    elif plot_type == "Average Confidence":
-        fig = px.line(data_filtered, 
-                      x='timestamp', 
-                      y='confidence',
-                      color='class_name',
-                      title="Detection Confidence Over Time")
-        st.plotly_chart(fig, use_container_width=True)
+    elif plot_type == "Environmental Variables":
+        if env_vars:
+            env_var = st.selectbox("Select Environmental Variable", env_vars)
+            fig = px.line(data, 
+                          x='timestamp', 
+                          y=env_var,
+                          title=f"{env_var} Over Time")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No environmental variables found in the data.")
+
+    elif plot_type == "Cluster Composition":
+        if cluster_cols:
+            cluster_col = st.selectbox("Select Cluster", cluster_cols)
+            fig = px.line(data, 
+                          x='timestamp', 
+                          y=cluster_col,
+                          title=f"{cluster_col} Over Time")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No cluster data found in the data.")
 
     elif plot_type == "Per-Class Time Series":
         # Create subplot for each class
@@ -145,5 +153,5 @@ if 'class_name' in data.columns:
             mime="text/csv"
         )
 else:
-    st.warning("Please select or upload CSV files with 'class_name' to analyze.")
+    st.warning("Please select or upload CSV files with 'Timestamp' to analyze.")
     st.stop()
