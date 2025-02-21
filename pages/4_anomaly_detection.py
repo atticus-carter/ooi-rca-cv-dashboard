@@ -72,15 +72,25 @@ if 'Timestamp' in data.columns:
     
     # Function to format anomalies for export
     def format_anomalies_for_export(anomaly_dates, variables, scores=None):
+        if scores is not None:
+            # Ensure anomaly_dates and scores are the same length
+            if len(anomaly_dates) != len(scores):
+                # If lengths don't match, create matching indices
+                df = pd.DataFrame({
+                    'timestamp': anomaly_dates,
+                    'score': scores
+                }).drop_duplicates('timestamp')
+                anomaly_dates = df['timestamp'].values
+                scores = df['score'].values
+
         export_df = pd.DataFrame({
-            'timestamp': pd.Series(anomaly_dates).unique(),  # Ensure unique timestamps
+            'timestamp': anomaly_dates,
             'variables': ', '.join(variables)
         })
+        
         if scores is not None:
-            # Take mean of scores if there are duplicates
-            scores_df = pd.DataFrame({'timestamp': anomaly_dates, 'score': scores})
-            mean_scores = scores_df.groupby('timestamp')['score'].mean()
-            export_df['anomaly_score'] = export_df['timestamp'].map(mean_scores)
+            export_df['anomaly_score'] = scores[:len(export_df)]
+        
         return export_df
     
     # --- Anomaly Detection Methods ---
