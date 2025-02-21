@@ -5,7 +5,7 @@ import glob
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns
+from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns, melt_species_data
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Time Series Analysis", layout="wide")
@@ -43,6 +43,9 @@ if 'Timestamp' in data.columns:
     class_names, cluster_cols, env_vars = extract_data_columns(data)
     
     data['timestamp'] = pd.to_datetime(data['Timestamp'])
+    
+    # Convert to long format for species data
+    melted_data = melt_species_data(data, class_names)
 
     # --- Analysis Options ---
     st.header("Analysis Options")
@@ -55,13 +58,13 @@ if 'Timestamp' in data.columns:
 
     # --- Visualization Functions ---
     def plot_basic_timeseries():
-        fig = px.line(data, x='timestamp', y='animal_count', 
+        fig = px.line(melted_data, x='timestamp', y='animal_count', 
                       color='class_name', title="Animal Counts Over Time")
         fig.update_layout(legend_title="Species")
         return fig
 
     def plot_class_distribution():
-        class_counts = data.groupby('class_name')['animal_count'].sum().reset_index()
+        class_counts = melted_data.groupby('class_name')['animal_count'].sum().reset_index()
         fig = px.bar(class_counts, x='class_name', y='animal_count', 
                      title="Total Counts by Class")
         fig.update_layout(xaxis_title="Species", yaxis_title="Count")

@@ -22,6 +22,22 @@ st.title("Ecological Metrics")
 # --- Shared Data Loading Functions ---
 # Note: These functions are identical across pages and could be moved to a utils.py file
 
+def validate_data(data, class_names):
+    """Validate data structure and clean it for analysis"""
+    if 'timestamp' not in data.columns:
+        data['timestamp'] = pd.to_datetime(data['Timestamp'])
+    
+    data['date'] = data['timestamp'].dt.date
+    
+    # Ensure all class columns exist and are numeric
+    for col in class_names:
+        if col not in data.columns:
+            data[col] = 0
+        else:
+            data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
+    
+    return data
+
 # --- Sidebar Controls ---
 with st.sidebar:
     st.header("Data Selection")
@@ -46,19 +62,25 @@ if not dfs:
     st.warning("Please select or upload CSV files to analyze.")
     st.stop()
 
-data = pd.concat(dfs, ignore_index=True)
-
-# --- Data Preprocessing ---
-if 'Timestamp' in data.columns:
+try:
+    data = pd.concat(dfs, ignore_index=True)
+    
     # Extract data columns
     class_names, cluster_cols, env_vars = extract_data_columns(data)
     
-    data['timestamp'] = pd.to_datetime(data['Timestamp'])
-    data['date'] = data['timestamp'].dt.date
+    # Validate and clean data
+    data = validate_data(data, class_names)
     
-    # Create pivot table for species counts
-    species_pivot = data.groupby(['date'])[class_names].sum()
-
+    # Create pivot table for species counts with error handling
+    try:
+        species_pivot = data.groupby(['date'])[class_names].sum()
+        if species_pivot.empty:
+            st.error("No valid species data found after grouping.")
+            st.stop()
+    except KeyError as e:
+        st.error(f"Error creating species pivot table: {str(e)}")
+        st.stop()
+    
     # --- Ecological Metrics Options ---
     st.header("Ecological Metrics Analysis")
     metric_type = st.selectbox(
@@ -90,15 +112,20 @@ if 'Timestamp' in data.columns:
         st.subheader("Diversity Indices Over Time")
         
         # Calculate rolling diversity indices
-        window_size = st.slider("Rolling Window (days)", 1, 30, 7)
-        diversity_indices = species_pivot.rolling(window=window_size, min_periods=1).apply(calculate_diversity_indices)
-        
-        # Plot indices
-        fig = go.Figure()
-        for col in diversity_indices.columns:
-            fig.add_trace(go.Scatter(x=diversity_indices.index, y=diversity_indices[col], name=col))
-        fig.update_layout(title="Diversity Indices Over Time", xaxis_title="Date", yaxis_title="Index Value")
-        st.plotly_chart(fig, use_container_width=True)
+        try:
+            window_size = st.slider("Rolling Window (days)", 1, 30, 7)
+            diversity_indices = species_pivot.rolling(window=window_size, min_periods=1).apply(calculate_diversity_indices)
+            
+            if diversity_indices.empty:
+                st.warning("No diversity indices could be calculated.")
+            else:
+                fig = go.Figure()
+                for col in diversity_indices.columns:
+                    fig.add_trace(go.Scatter(x=diversity_indices.index, y=diversity_indices[col], name=col))
+                fig.update_layout(title="Diversity Indices Over Time", xaxis_title="Date", yaxis_title="Index Value")
+                st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error calculating diversity indices: {str(e)}")
 
     elif metric_type == "Species Accumulation":
         st.subheader("Species Accumulation Curve")
@@ -249,6 +276,6 @@ if 'Timestamp' in data.columns:
             file_name=f"ecological_metrics_{selected_camera}.csv",
             mime="text/csv"
         )
-else:
-    st.warning("Please select or upload CSV files with 'Timestamp' to analyze.")
+except Exception as e:
+    st.error(f"An error occurred while processing the data: {str(e)}")
     st.stop()

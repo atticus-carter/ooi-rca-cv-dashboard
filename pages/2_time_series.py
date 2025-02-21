@@ -5,7 +5,7 @@ import glob
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns
+from scripts.utils import load_local_files, load_uploaded_files, extract_data_columns, melt_species_data
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Time Series", layout="wide")
@@ -45,6 +45,13 @@ if 'Timestamp' in data.columns:
     data['timestamp'] = pd.to_datetime(data['Timestamp'])
     data = data.sort_values('timestamp')
 
+    # Instead of filtering and melting manually, use the utility function
+    melted_data = melt_species_data(data, class_names)
+    
+    # Filter by selected classes if needed
+    if selected_classes:
+        melted_data = melted_data[melted_data['class_name'].isin(selected_classes)]
+
     # --- Time Series Specific Visualizations ---
     st.header("Time Series Visualization")
 
@@ -62,12 +69,10 @@ if 'Timestamp' in data.columns:
         selected_classes = st.multiselect("Filter Classes", 
                                         available_classes,
                                         default=available_classes)
-        data_filtered = data[['timestamp'] + selected_classes]
-        data_filtered = data_filtered.melt(id_vars=['timestamp'], value_vars=selected_classes, var_name='class_name', value_name='animal_count')
 
     # --- Generate Visualizations ---
     if plot_type == "Stacked Bar Chart":
-        fig = px.bar(data_filtered, 
+        fig = px.bar(melted_data, 
                      x='timestamp', 
                      y='animal_count',
                      color='class_name',
@@ -77,7 +82,7 @@ if 'Timestamp' in data.columns:
 
     elif plot_type == "Stacked Area Chart":
         # Aggregate counts by timestamp and class
-        df_area = data_filtered.groupby(['timestamp', 'class_name'])['animal_count'].sum().reset_index()
+        df_area = melted_data.groupby(['timestamp', 'class_name'])['animal_count'].sum().reset_index()
         # Create percentage stacked area chart
         fig = px.area(df_area, 
                       x='timestamp', 
@@ -144,7 +149,7 @@ if 'Timestamp' in data.columns:
         # Create subplot for each class
         fig = go.Figure()
         for class_name in selected_classes:
-            class_data = data_filtered[data_filtered['class_name'] == class_name]
+            class_data = melted_data[melted_data['class_name'] == class_name]
             fig.add_trace(
                 go.Scatter(x=class_data['timestamp'],
                           y=class_data['animal_count'],
@@ -166,13 +171,13 @@ if 'Timestamp' in data.columns:
 
     with col1:
         st.subheader("Total Counts by Class")
-        class_totals = data_filtered.groupby('class_name')['animal_count'].sum().sort_values(ascending=False)
+        class_totals = melted_data.groupby('class_name')['animal_count'].sum().sort_values(ascending=False)
         st.dataframe(class_totals)
 
     # --- Download Options ---
     st.header("Download Data")
     if st.button("Download Filtered Data"):
-        csv = data_filtered.to_csv(index=False)
+        csv = melted_data.to_csv(index=False)
         st.download_button(
             label="Download CSV",
             data=csv,

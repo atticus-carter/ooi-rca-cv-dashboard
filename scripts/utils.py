@@ -49,3 +49,13 @@ def extract_data_columns(df):
     ]
     
     return class_names, cluster_cols, env_vars
+
+def melt_species_data(df, class_names):
+    """Convert wide-format species data to long format."""
+    melted_df = df.melt(
+        id_vars=['timestamp'], 
+        value_vars=class_names,
+        var_name='class_name',
+        value_name='animal_count'
+    )
+    return melted_df
