@@ -19,10 +19,12 @@ st.title("Ecological Metrics Analysis")
 # --- Sidebar Controls ---
 with st.sidebar:
     st.header("Data Selection")
+    camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
+    selected_camera = st.selectbox("Select Camera", camera_names)
+    
     uploaded_files = st.file_uploader("Upload CSV Files", type=["csv"], accept_multiple_files=True)
     
-    # Optionally, you can store local ecological CSV files in a dedicated folder
-    base_dir = os.path.join("ecological_data")
+    base_dir = os.path.join("timeseries", selected_camera)
     csv_files = glob.glob(os.path.join(base_dir, "**", "*.csv"), recursive=True)
     csv_files = [os.path.relpath(f, base_dir) for f in csv_files]
     selected_csvs = st.multiselect("Select CSV Files", csv_files)
