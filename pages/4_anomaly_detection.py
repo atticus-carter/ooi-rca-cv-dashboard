@@ -73,11 +73,14 @@ if 'Timestamp' in data.columns:
     # Function to format anomalies for export
     def format_anomalies_for_export(anomaly_dates, variables, scores=None):
         export_df = pd.DataFrame({
-            'timestamp': anomaly_dates,
+            'timestamp': pd.Series(anomaly_dates).unique(),  # Ensure unique timestamps
             'variables': ', '.join(variables)
         })
         if scores is not None:
-            export_df['anomaly_score'] = scores
+            # Take mean of scores if there are duplicates
+            scores_df = pd.DataFrame({'timestamp': anomaly_dates, 'score': scores})
+            mean_scores = scores_df.groupby('timestamp')['score'].mean()
+            export_df['anomaly_score'] = export_df['timestamp'].map(mean_scores)
         return export_df
     
     # --- Anomaly Detection Methods ---
@@ -86,12 +89,15 @@ if 'Timestamp' in data.columns:
         
         anomalies_all = pd.DataFrame()
         for var in selected_vars:
-            z_scores = np.abs(stats.zscore(data[var].fillna(method='ffill')))
-            anomaly_mask = z_scores > threshold
-            if anomaly_mask.any():
-                anomalies = data[anomaly_mask][['timestamp', var]]
-                anomalies['anomaly_score'] = z_scores[anomaly_mask]
-                anomalies_all = pd.concat([anomalies_all, anomalies])
+            if var in data.columns:  # Check if variable exists in data
+                z_scores = np.abs(stats.zscore(data[var].ffill()))  # Use ffill() instead of fillna
+                anomaly_mask = z_scores > threshold
+                if anomaly_mask.any():
+                    var_anomalies = data[anomaly_mask][['timestamp', var]].copy()
+                    var_anomalies['anomaly_score'] = z_scores[anomaly_mask]
+                    anomalies_all = pd.concat([anomalies_all, var_anomalies], ignore_index=True)
+            else:
+                st.warning(f"Variable '{var}' not found in data")
         
         if not anomalies_all.empty:
             # Visualization
@@ -125,7 +131,7 @@ if 'Timestamp' in data.columns:
         contamination = st.slider("Contamination Factor", 0.01, 0.1, 0.05)
         
         # Prepare data for Isolation Forest
-        X = data[selected_vars].fillna(method='ffill')
+        X = data[selected_vars].ffill()  # Use ffill() instead of fillna
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
         
@@ -166,12 +172,15 @@ if 'Timestamp' in data.columns:
         
         anomaly_points = []
         for var in selected_vars:
-            signal = data[var].fillna(method='ffill').values
-            algo = rpt.Pelt(model="rbf", min_size=min_size, jump=1).fit(signal)
-            change_points = algo.predict(pen=penalty_value)
-            
-            if change_points:
-                anomaly_points.extend(data.iloc[change_points]['timestamp'])
+            if var in data.columns:  # Check if variable exists
+                signal = data[var].ffill().values  # Use ffill() instead of fillna
+                algo = rpt.Pelt(model="rbf", min_size=min_size, jump=1).fit(signal)
+                change_points = algo.predict(pen=penalty_value)
+                
+                if change_points:
+                    anomaly_points.extend(data.iloc[change_points]['timestamp'])
+            else:
+                st.warning(f"Variable '{var}' not found in data")
         
         if anomaly_points:
             # Visualization
@@ -199,7 +208,7 @@ if 'Timestamp' in data.columns:
         threshold = st.slider("Mahalanobis Distance Threshold", 2.0, 10.0, 3.0)
         
         # Prepare data
-        X = data[selected_vars].fillna(method='ffill')
+        X = data[selected_vars].ffill()  # Use ffill() instead of fillna
         
         # Calculate Mahalanobis distance
         def mahalanobis(x, data):
