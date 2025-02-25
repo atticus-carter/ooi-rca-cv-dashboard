@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.env
+.env.*
+
+# Full path to virtual environment
+C:/Users/Student/Documents/GitHub/ooi-rca-cv-dashboard/venv/
+C:\Users\Student\Documents\GitHub\ooi-rca-cv-dashboard\venv\
+/C:/Users/Student/Documents/GitHub/ooi-rca-cv-dashboard/venv/
+\C:\Users\Student\Documents\GitHub\ooi-rca-cv-dashboard\venv\
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+models/
+*.joblib
+*.pt
+predictions/
+logs/
