@@ -48,9 +48,9 @@ with st.sidebar:
         ["Animal Presence", "Environmental Conditions"]
     )
     
-    # Camera selection
+    # Camera selection - default to MJ01B_CAMDSB103
     camera_names = ["PC01A_CAMDSC102", "LV01C_CAMDSB106", "MJ01C_CAMDSB107", "MJ01B_CAMDSB103"]
-    selected_camera = st.selectbox("Select Camera", camera_names)
+    selected_camera = st.selectbox("Select Camera", camera_names, index=camera_names.index("MJ01B_CAMDSB103"))
     
     # File upload and selection
     uploaded_files = st.file_uploader("Upload CSV Files", type=["csv"], accept_multiple_files=True)
@@ -58,7 +58,15 @@ with st.sidebar:
     base_dir = os.path.join("timeseries", selected_camera)
     csv_files = glob.glob(os.path.join(base_dir, "**", "*.csv"), recursive=True)
     csv_files = [os.path.relpath(f, base_dir) for f in csv_files]
-    selected_csvs = st.multiselect("Select CSV Files", csv_files)
+    
+    # Pre-select the default CSV file
+    default_csv = "SHR_2022_2023_fauna_ctd_pressure.csv"
+    default_index = csv_files.index(default_csv) if default_csv in csv_files else []
+    selected_csvs = st.multiselect(
+        "Select CSV Files", 
+        csv_files,
+        default=[default_csv] if default_csv in csv_files else []
+    )
 
 # --- Load and Process Data ---
 dfs = []
@@ -75,8 +83,13 @@ data = pd.concat(dfs, ignore_index=True)
 
 # --- Data Preprocessing ---
 def prepare_data(data, target_type="animal"):
+    # The CSV has 'Timestamp' column with format like "8/10/2022 15:46"
+    if 'Timestamp' not in data.columns:
+        st.error("The CSV file must contain a 'Timestamp' column.")
+        st.stop()
+    
     # Convert timestamp to datetime
-    data['timestamp'] = pd.to_datetime(data['timestamp'])
+    data['timestamp'] = pd.to_datetime(data['Timestamp'])
     
     # Extract temporal features
     data['hour'] = data['timestamp'].dt.hour
@@ -84,20 +97,38 @@ def prepare_data(data, target_type="animal"):
     data['month'] = data['timestamp'].dt.month
     data['day_of_week'] = data['timestamp'].dt.dayofweek
     
-    # Select features based on prediction type
+    # For animal prediction, use available environmental features
     if target_type == "animal":
-        # Features for animal prediction
-        feature_cols = ['temperature', 'salinity', 'oxygen', 'chlorophyll',
+        # Features for animal prediction, using columns from your CSV
+        feature_cols = ['Temperature', 'Salinity', 'Pressure', 'Oxygen Phase, usec',
                        'hour', 'day', 'month', 'day_of_week']
+        
+        # Calculate total animal count from fauna columns
+        fauna_cols = ['Anoplopoma', 'Asteroidea', 'Chionoecetes', 'Eptatretus',
+                     'Euphausia', 'Liponema', 'Microstomus', 'Sebastes', 'Zoarcidae']
+        data['animal_count'] = data[fauna_cols].sum(axis=1)
         target_col = 'animal_count'
     else:
         # Features for environmental prediction
+        fauna_cols = ['Anoplopoma', 'Asteroidea', 'Chionoecetes', 'Eptatretus',
+                     'Euphausia', 'Liponema', 'Microstomus', 'Sebastes', 'Zoarcidae']
+        data['animal_count'] = data[fauna_cols].sum(axis=1)
         feature_cols = ['animal_count', 'hour', 'day', 'month', 'day_of_week']
         target_col = st.selectbox("Select Environmental Variable to Predict",
-                                ['temperature', 'salinity', 'oxygen', 'chlorophyll'])
+                                ['Temperature', 'Salinity', 'Pressure', 'Oxygen Phase, usec'])
+    
+    # Check if all required columns exist
+    missing_cols = [col for col in feature_cols + [target_col] if col not in data.columns]
+    if missing_cols:
+        st.error(f"Missing required columns: {', '.join(missing_cols)}")
+        st.stop()
     
     # Remove rows with missing values
     data = data.dropna(subset=feature_cols + [target_col])
+    
+    if len(data) == 0:
+        st.error("No valid data remains after removing missing values")
+        st.stop()
     
     return data, feature_cols, target_col
 
