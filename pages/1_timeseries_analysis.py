@@ -177,7 +177,7 @@ if 'Timestamp' in data.columns:
             selected_classes = st.multiselect(
                 "Select Classes to Include",
                 available_classes,
-                default=available_classes[:11]  # Default to first 3 classes
+                default=available_classes[:11]  # Default to first 11 classes
             )
         
         if not selected_classes:
